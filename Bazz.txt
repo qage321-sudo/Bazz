@@ -1,0 +1,1383 @@
+--[[
+    ╔═══════════════════════════════════════════════╗
+    ║  BAZZ                                         ║
+    ║  Map    : Steal an Egg                        ║
+    ║  Owner  : JOY                                 ║
+    ║  Key    : BAZZ (Basic) | JOY (Premium)        ║
+    ║  Bypass : LOCKED ON                           ║
+    ╚═══════════════════════════════════════════════╝
+]]
+
+--=============================================================
+-- [01] SERVICES
+--=============================================================
+local Players           = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService        = game:GetService("RunService")
+local UserInputService  = game:GetService("UserInputService")
+local TweenService      = game:GetService("TweenService")
+local HttpService       = game:GetService("HttpService")
+local StarterGui        = game:GetService("StarterGui")
+local Lighting          = game:GetService("Lighting")
+local CoreGui           = game:GetService("CoreGui")
+local TeleportService   = game:GetService("TeleportService")
+local VirtualUser       = game:GetService("VirtualUser")
+
+local LP  = Players.LocalPlayer
+local PG  = LP:WaitForChild("PlayerGui", 5)
+local CH  = LP.Character or LP.CharacterAdded:Wait()
+local HRP = CH:WaitForChild("HumanoidRootPart", 5)
+local HUM = CH:WaitForChild("Humanoid", 5)
+
+--=============================================================
+-- [02] BYFRON ALIASES
+--=============================================================
+local hf  = hookfunction or (getgenv and getgenv().hookfunction)
+local hm  = hookmetamethod or (getgenv and getgenv().hookmetamethod)
+local grm = getrawmetatable or (getgenv and getgenv().getrawmetatable)
+local gnc = getconnections or (getgenv and getgenv().getconnections)
+local gh  = gethui or (getgenv and getgenv().gethui) or function() return CoreGui end
+local req = request or http_request or (syn and syn.request) or (fluxus and fluxus.request)
+
+--=============================================================
+-- [03] GLOBAL STATE
+--=============================================================
+local BAZZ = {
+    Version = "1.0",
+    Owner   = "JOY",
+    Tier    = nil,
+    Key     = nil,
+    UI      = nil,
+    Toggle  = {},
+    Slider  = {},
+    Dropdown= {},
+    Keybind = {},
+    Connections = {},
+    Workers = {},
+    Drawings= {},
+    Warning = 0,
+    Started = tick(),
+    Bypass  = true,
+    AntiBan = true,
+    LogoURL = "https://cdn.discordapp.com/attachments/1488056419537387604/1549709310110597160/b8c49d13ce29f7a59bcda2bfbfba03a7.jpg?ex=6aabaec3&is=6aaa5d43&hm=93f8fb3e158925f0a39fa8fc183f5293e8804d06bc7fa2f290cfb72402954a82&",
+}
+
+setmetatable(BAZZ, {
+    __newindex = function(t, k, v)
+        if (k == "Bypass" or k == "AntiBan") and v ~= true then
+            rawset(t, k, true); return
+        end
+        rawset(t, k, v)
+    end
+})
+
+--=============================================================
+-- [04] CONFIG
+--=============================================================
+local CONFIG_FILE = "bazz_config.json"
+
+local Config = {
+    General = { Notify=true, AutoSave=true, Watermark=true },
+    Steal = {
+        Enabled=false,
+        Mode="Rarest",
+        Whitelist={},
+        Biomes={},
+        MinWeight=0, MaxWeight=999999,
+        UseFly=true, FlySpeed=180,
+        AntiHit=true, ReturnToBase=true,
+        Delay=0.28, MaxDistance=4000,
+        Prioritize={"Divine","Eternal","Secret","Mythic","Legendary","Epic","Rare","Common"},
+    },
+    Treadmill = { Enabled=false },
+    Hatch     = { Enabled=false, AutoPlace=true },
+    Event     = { Enabled=false, Ring=false, TeamClaim=false, Fusion=false },
+    Combat    = { AntiHit=false, AntiRagdoll=false, AntiKnockback=false },
+    Upgrade   = { Enabled=false },
+    Buy       = { Enabled=false },
+    AntiAFK   = { Enabled=true },
+    ESP = {
+        Egg      = { Enabled=false, Box=true, Name=true, Distance=true, MaxDistance=3000, Color=Color3.fromRGB(0,220,120) },
+        Guardian = { Enabled=false, Tracer=true, Distance=true, Color=Color3.fromRGB(255,60,60) },
+        Player   = { Enabled=false, Box=true, Name=true, Distance=true, Color=Color3.fromRGB(80,160,255) },
+    },
+    FixLag   = { Enabled=false, Level="Medium" },
+    Movement = { Speed=false, SpeedValue=32, Jump=false, JumpValue=120, Fly=false, FlySpeed=120, Noclip=false, InfJump=false },
+    Teleport = { ToEgg=false, ToBase=false },
+    Misc     = { AutoSell=false, SellRarity="Common", AutoEquipBest=false, AutoClaimIndex=false, AutoDropHeld=false, AntiTrap=false, ServerHop=false, Godmode=false, Webhook="" },
+}
+
+--=============================================================
+-- [05] UTILITIES
+--=============================================================
+local function log(...) print("[BAZZ]", ...) end
+local function notify(t, x, d)
+    if not Config.General.Notify then return end
+    pcall(function() StarterGui:SetCore("SendNotification", {Title=t, Text=x, Duration=d or 4}) end)
+end
+local function safe(fn, ...) local ok, e = pcall(fn, ...); if not ok then log("safe:", e) end; return ok, e end
+local function getChar()
+    if not LP.Character then return nil end
+    local h = LP.Character:FindFirstChildOfClass("Humanoid")
+    local hrp = LP.Character:FindFirstChild("HumanoidRootPart")
+    if h and hrp then return LP.Character, h, hrp end
+    return nil
+end
+local function dist(a,b) return (a-b).Magnitude end
+local function rndD(b) return b + math.random(-40,40)/1000 end
+local function inT(t,v) for _,x in ipairs(t) do if x==v then return true end end return false end
+
+--=============================================================
+-- [06] KEY SYSTEM
+--=============================================================
+local KEY_BASIC   = "BAZZ"
+local KEY_PREMIUM = "JOY"
+
+--=============================================================
+-- [07] REMOTE SCANNER
+--=============================================================
+local Remotes = {Steal=nil,Hatch=nil,Place=nil,Treadmill=nil,Buy=nil,Sell=nil,Claim=nil,Fusion=nil,Ring=nil,Event=nil,All={}}
+local PATTERNS = {"Steal","Egg","Hatch","Place","Treadmill","Buy","Sell","Claim","Fusion","Ring","Event","Upgrade","Drop","Trap"}
+
+local function matchP(n)
+    for _, p in ipairs(PATTERNS) do if n:lower():find(p:lower()) then return p end end
+end
+
+local function scanC(container, depth)
+    depth = depth or 0
+    if depth > 3 then return end
+    for _, obj in ipairs(container:GetDescendants()) do
+        if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") or obj:IsA("BindableEvent") then
+            table.insert(Remotes.All, obj)
+            local pat = matchP(obj.Name)
+            if pat then
+                if pat=="Steal"     and not Remotes.Steal     then Remotes.Steal=obj end
+                if pat=="Hatch"     and not Remotes.Hatch     then Remotes.Hatch=obj end
+                if pat=="Egg"       and not Remotes.Hatch     then Remotes.Hatch=obj end
+                if pat=="Place"     and not Remotes.Place     then Remotes.Place=obj end
+                if pat=="Treadmill" and not Remotes.Treadmill then Remotes.Treadmill=obj end
+                if pat=="Buy"       and not Remotes.Buy       then Remotes.Buy=obj end
+                if pat=="Sell"      and not Remotes.Sell      then Remotes.Sell=obj end
+                if pat=="Claim"     and not Remotes.Claim     then Remotes.Claim=obj end
+                if pat=="Fusion"    and not Remotes.Fusion    then Remotes.Fusion=obj end
+                if pat=="Ring"      and not Remotes.Ring      then Remotes.Ring=obj end
+                if pat=="Event"     and not Remotes.Event     then Remotes.Event=obj end
+            end
+        end
+    end
+end
+
+local function scanRemotes()
+    safe(function()
+        scanC(ReplicatedStorage)
+        scanC(workspace)
+        scanC(LP)
+    end)
+    log("Remotes:", #Remotes.All)
+end
+
+local function fireR(remote, ...)
+    if not remote then return false end
+    local args = {...}
+    return pcall(function()
+        if remote:IsA("RemoteEvent") then remote:FireServer(unpack(args))
+        elseif remote:IsA("RemoteFunction") then remote:InvokeServer(unpack(args))
+        elseif remote:IsA("BindableEvent") then remote:Fire(unpack(args)) end
+    end)
+end
+
+--=============================================================
+-- [08] ANTI-BAN CORE
+--=============================================================
+local AB = { MinDelay=0.20, LastFire={} }
+function AB.fire(remote, key, ...)
+    if not remote then return false end
+    local now = tick()
+    local last = AB.LastFire[key or remote.Name] or 0
+    if now - last < rndD(AB.MinDelay) then return false end
+    AB.LastFire[key or remote.Name] = now
+    return fireR(remote, ...)
+end
+
+--=============================================================
+-- [09] WORKER MANAGER
+--=============================================================
+local function newW(name, fn)
+    if BAZZ.Workers[name] then return end
+    BAZZ.Workers[name] = {running=true}
+    local w = BAZZ.Workers[name]
+    task.spawn(function()
+        while w.running do
+            local ok, err = pcall(fn)
+            if not ok then log("w["..name.."]", err) end
+            task.wait(rndD(0.08))
+        end
+    end)
+end
+local function stopW(name)
+    if BAZZ.Workers[name] then BAZZ.Workers[name].running=false; BAZZ.Workers[name]=nil end
+end
+
+--=============================================================
+-- [10] RESPAWN
+--=============================================================
+LP.CharacterAdded:Connect(function(c)
+    CH = c
+    HRP = c:WaitForChild("HumanoidRootPart", 5)
+    HUM = c:WaitForChild("Humanoid", 5)
+    task.wait(1)
+    if HUM then safe(function()
+        if not Config.Movement.Speed then HUM.WalkSpeed = 16 end
+        if not Config.Movement.Jump then HUM.JumpPower = 50; HUM.UseJumpPower = true end
+    end) end
+end)
+
+--=============================================================
+-- [11] ESP ENGINE
+--=============================================================
+local cam = workspace.CurrentCamera
+
+local function w2s(pos)
+    local sp, on = cam:WorldToViewportPoint(pos)
+    if not on or sp.Z < 0 then return nil end
+    return Vector2.new(sp.X, sp.Y)
+end
+
+local ESP = {}
+function ESP.clear(k)
+    if not BAZZ.Drawings[k] then return end
+    for _, d in pairs(BAZZ.Drawings[k]) do pcall(function() d:Remove() end) end
+    BAZZ.Drawings[k] = {}
+end
+function ESP.folder(k)
+    if not BAZZ.Drawings[k] then BAZZ.Drawings[k] = {} end
+    return BAZZ.Drawings[k]
+end
+
+newW("ESP_Egg", function()
+    if not Config.ESP.Egg.Enabled then ESP.clear("Egg"); return end
+    local F = ESP.folder("Egg"); local live = {}
+    local _, _, hrp = getChar()
+    if not hrp then return end
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and obj.Name:lower():find("egg") then
+            local d = dist(hrp.Position, obj.Position)
+            if d <= Config.ESP.Egg.MaxDistance then
+                local dr = F[obj]
+                if not dr then
+                    dr = {
+                        box = Drawing.new("Square"),
+                        txt = Drawing.new("Text"),
+                    }
+                    dr.box.Thickness=1; dr.box.Filled=false
+                    dr.txt.Size=14; dr.txt.Center=true; dr.txt.Outline=true
+                    F[obj] = dr
+                end
+                local sp = w2s(obj.Position)
+                if sp then
+                    if Config.ESP.Egg.Box then
+                        local s = 40
+                        dr.box.Size = Vector2.new(s,s)
+                        dr.box.Position = sp - Vector2.new(s/2,s/2)
+                        dr.box.Color = Config.ESP.Egg.Color
+                        dr.box.Visible = true
+                    else dr.box.Visible=false end
+                    local label = obj.Name
+                    if Config.ESP.Egg.Distance then label = label.." ["..math.floor(d).."m]" end
+                    dr.txt.Text = label
+                    dr.txt.Position = sp - Vector2.new(0,25)
+                    dr.txt.Color = Config.ESP.Egg.Color
+                    dr.txt.Visible = true
+                else
+                    dr.box.Visible=false; dr.txt.Visible=false
+                end
+                live[obj] = true
+            end
+        end
+    end
+    for k, dr in pairs(F) do
+        if not live[k] then pcall(function() dr.box:Remove(); dr.txt:Remove() end); F[k]=nil end
+    end
+end)
+
+newW("ESP_Guardian", function()
+    if not Config.ESP.Guardian.Enabled then ESP.clear("Guardian"); return end
+    local F = ESP.folder("Guardian"); local live = {}
+    local _, _, hrp = getChar(); if not hrp then return end
+    for _, m in ipairs(workspace:GetDescendants()) do
+        if m:IsA("Model") and (m.Name:lower():find("guardian") or m.Name:lower():find("monster")) then
+            local root = m:FindFirstChild("HumanoidRootPart") or m:FindFirstChildWhichIsA("BasePart")
+            if root then
+                local d = dist(hrp.Position, root.Position)
+                local dr = F[m]
+                if not dr then
+                    dr = { line = Drawing.new("Line"), txt = Drawing.new("Text") }
+                    dr.line.Thickness=1; dr.txt.Size=14; dr.txt.Center=true; dr.txt.Outline=true
+                    F[m] = dr
+                end
+                local sp = w2s(root.Position)
+                if sp then
+                    dr.line.From = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y)
+                    dr.line.To = sp
+                    dr.line.Color = Config.ESP.Guardian.Color
+                    dr.line.Visible = true
+                    dr.txt.Text = m.Name.." ["..math.floor(d).."m]"
+                    dr.txt.Position = sp
+                    dr.txt.Color = Config.ESP.Guardian.Color
+                    dr.txt.Visible = true
+                else
+                    dr.line.Visible=false; dr.txt.Visible=false
+                end
+                live[m] = true
+            end
+        end
+    end
+    for k, dr in pairs(F) do
+        if not live[k] then pcall(function() dr.line:Remove(); dr.txt:Remove() end); F[k]=nil end
+    end
+end)
+
+newW("ESP_Player", function()
+    if not Config.ESP.Player.Enabled then ESP.clear("Player"); return end
+    local F = ESP.folder("Player"); local live = {}
+    local _, _, my = getChar(); if not my then return end
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LP and plr.Character then
+            local root = plr.Character:FindFirstChild("HumanoidRootPart")
+            local h = plr.Character:FindFirstChildOfClass("Humanoid")
+            if root and h and h.Health > 0 then
+                local d = dist(my.Position, root.Position)
+                local dr = F[plr]
+                if not dr then
+                    dr = { box=Drawing.new("Square"), txt=Drawing.new("Text") }
+                    dr.box.Thickness=1; dr.box.Filled=false
+                    dr.txt.Size=14; dr.txt.Center=true; dr.txt.Outline=true
+                    F[plr] = dr
+                end
+                local sp = w2s(root.Position)
+                if sp then
+                    if Config.ESP.Player.Box then
+                        local s = 36
+                        dr.box.Size = Vector2.new(s,s)
+                        dr.box.Position = sp - Vector2.new(s/2,s/2)
+                        dr.box.Color = Config.ESP.Player.Color
+                        dr.box.Visible = true
+                    else dr.box.Visible=false end
+                    dr.txt.Text = plr.Name.." ["..math.floor(d).."m]"
+                    dr.txt.Position = sp - Vector2.new(0,25)
+                    dr.txt.Color = Config.ESP.Player.Color
+                    dr.txt.Visible = true
+                else
+                    dr.box.Visible=false; dr.txt.Visible=false
+                end
+                live[plr] = true
+            end
+        end
+    end
+    for k, dr in pairs(F) do
+        if not live[k] then pcall(function() dr.box:Remove(); dr.txt:Remove() end); F[k]=nil end
+    end
+end)
+
+--=============================================================
+-- [12] EGG SCANNER
+--=============================================================
+local function findEggs()
+    local list = {}
+    local _, _, hrp = getChar(); if not hrp then return list end
+    for _, egg in ipairs(workspace:GetDescendants()) do
+        if egg:IsA("BasePart") and egg.Name:lower():find("egg") then
+            local d = dist(hrp.Position, egg.Position)
+            if d <= Config.Steal.MaxDistance then
+                local rarity, weight, biome = "Common", 1, "Unknown"
+                local rv = egg:FindFirstChild("Rarity"); if rv and rv:IsA("StringValue") then rarity = rv.Value end
+                local wv = egg:FindFirstChild("Weight"); if wv and (wv:IsA("NumberValue") or wv:IsA("IntValue")) then weight = wv.Value end
+                local bv = egg:FindFirstChild("Biome"); if bv and bv:IsA("StringValue") then biome = bv.Value end
+                table.insert(list, {part=egg, dist=d, rarity=rarity, weight=weight, biome=biome, name=egg.Name})
+            end
+        end
+    end
+    return list
+end
+
+local function rankR(r)
+    for i, v in ipairs(Config.Steal.Prioritize) do if v==r then return i end end
+    return #Config.Steal.Prioritize + 1
+end
+
+local function pickEgg(list)
+    if #list == 0 then return nil end
+    local m = Config.Steal.Mode
+    if m == "Rarest" then
+        table.sort(list, function(a,b) return rankR(a.rarity) < rankR(b.rarity) end)
+        return list[1]
+    elseif m == "Weight" then
+        table.sort(list, function(a,b) return a.weight > b.weight end)
+        return list[1]
+    elseif m == "Whitelist" then
+        for _, e in ipairs(list) do if inT(Config.Steal.Whitelist, e.name) then return e end end
+        return list[1]
+    elseif m == "Random" then
+        return list[math.random(1,#list)]
+    end
+    return list[1]
+end
+
+--=============================================================
+-- [13] FLY
+--=============================================================
+local Fly = {active=false}
+function Fly.on(speed)
+    local _, _, hrp = getChar(); if not hrp or Fly.active then return end
+    local bv = Instance.new("BodyVelocity")
+    bv.MaxForce = Vector3.new(1e5,1e5,1e5); bv.Velocity = Vector3.zero; bv.Parent = hrp
+    local bg = Instance.new("BodyGyro")
+    bg.MaxTorque = Vector3.new(1e5,1e5,1e5); bg.P = 1000; bg.Parent = hrp
+    Fly.bv = bv; Fly.bg = bg; Fly.active = true
+    Fly.conn = RunService.RenderStepped:Connect(function()
+        if not Fly.active then return end
+        local _, _, h = getChar(); if not h or not Fly.bv then return end
+        local dir = Vector3.zero
+        local cf = workspace.CurrentCamera.CFrame
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir += cf.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir -= cf.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir -= cf.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir += cf.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir += Vector3.new(0,1,0) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then dir -= Vector3.new(0,1,0) end
+        Fly.bv.Velocity = dir.Magnitude > 0 and dir.Unit * speed or Vector3.zero
+        Fly.bg.CFrame = cf
+    end)
+    table.insert(BAZZ.Connections, Fly.conn)
+end
+function Fly.off()
+    Fly.active = false
+    if Fly.conn then pcall(function() Fly.conn:Disconnect() end); Fly.conn=nil end
+    if Fly.bv then pcall(function() Fly.bv:Destroy() end); Fly.bv=nil end
+    if Fly.bg then pcall(function() Fly.bg:Destroy() end); Fly.bg=nil end
+end
+
+--=============================================================
+-- [14] TELEPORT
+--=============================================================
+local function tpTo(pos)
+    local _, _, hrp = getChar(); if not hrp or not pos then return end
+    hrp.CFrame = CFrame.new(pos + Vector3.new(0,3,0))
+end
+local function findBase()
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        local n = obj.Name:lower()
+        if (n:find("base") or n:find("plot") or n:find("spawn")) and obj:IsA("BasePart") then
+            return obj.Position
+        end
+    end
+end
+
+--=============================================================
+-- [15] BASIC FEATURES
+--=============================================================
+local Basic = {}
+
+Basic.AutoSteal = function()
+    newW("AutoSteal_Basic", function()
+        if not Config.Steal.Enabled then return end
+        local eggs = findEggs(); local t = pickEgg(eggs); if not t then return end
+        if AB.fire(Remotes.Steal, "Steal", t.part) then
+            notify("Steal", "Basic: "..t.name, 2)
+        end
+    end)
+end
+
+Basic.AutoTreadmill = function()
+    newW("AutoTreadmill", function()
+        if not Config.Treadmill.Enabled then return end
+        AB.fire(Remotes.Treadmill, "Treadmill")
+    end)
+end
+
+Basic.AutoHatch = function()
+    newW("AutoHatch", function()
+        if not Config.Hatch.Enabled then return end
+        AB.fire(Remotes.Hatch, "Hatch")
+        if Config.Hatch.AutoPlace then AB.fire(Remotes.Place, "Place") end
+    end)
+end
+
+Basic.AutoEvent = function()
+    newW("AutoEvent_Basic", function()
+        if not Config.Event.Enabled then return end
+        AB.fire(Remotes.Event, "Event")
+    end)
+end
+
+Basic.AntiHit = function()
+    newW("AntiHit", function()
+        if not Config.Combat.AntiHit then return end
+        local _, h = getChar(); if not h then return end
+        safe(function()
+            if h:GetState() == Enum.HumanoidStateType.Physics then
+                h:ChangeState(Enum.HumanoidStateType.Running)
+            end
+        end)
+    end)
+end
+
+Basic.AutoUpgrade = function()
+    newW("AutoUpgrade", function()
+        if not Config.Upgrade.Enabled then return end
+        AB.fire(Remotes.Buy, "Upgrade")
+    end)
+end
+
+Basic.AutoBuy = function()
+    newW("AutoBuy", function()
+        if not Config.Buy.Enabled then return end
+        AB.fire(Remotes.Buy, "Buy")
+    end)
+end
+
+Basic.AntiAFK = function()
+    newW("AntiAFK", function()
+        if not Config.AntiAFK.Enabled then return end
+    end)
+    safe(function()
+        LP.Idled:Connect(function()
+            VirtualUser:CaptureController()
+            VirtualUser:ClickButton2(Vector2.new())
+        end)
+    end)
+end
+
+Basic.FixLag = function()
+    newW("FixLag", function()
+        if not Config.FixLag.Enabled then return end
+        safe(function()
+            for _, v in ipairs(workspace:GetDescendants()) do
+                if v:IsA("Decal") or v:IsA("Texture") then v.Transparency = 1 end
+                if v:IsA("ParticleEmitter") or v:IsA("Trail") then v.Enabled = false end
+            end
+            Lighting.GlobalShadows = false
+            Lighting.FogEnd = 100000
+            pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level01 end)
+        end)
+        task.wait(2)
+    end)
+end
+
+Basic.Save = function()
+    safe(function()
+        if writefile then writefile(CONFIG_FILE, HttpService:JSONEncode(Config)) end
+        notify("Config", "Saved", 2)
+    end)
+end
+
+Basic.Load = function()
+    safe(function()
+        if isfile and isfile(CONFIG_FILE) then
+            local d = HttpService:JSONDecode(readfile(CONFIG_FILE))
+            for k,v in pairs(d) do
+                if type(v)=="table" and Config[k] then
+                    for k2,v2 in pairs(v) do Config[k][k2] = v2 end
+                else Config[k] = v end
+            end
+            notify("Config", "Loaded", 2)
+        end
+    end)
+end
+
+Basic.Noclip = function()
+    newW("Noclip", function()
+        if not Config.Movement.Noclip then return end
+        local c = LP.Character; if not c then return end
+        for _, p in ipairs(c:GetDescendants()) do
+            if p:IsA("BasePart") and p.CanCollide then p.CanCollide = false end
+        end
+    end)
+end
+
+--=============================================================
+-- [16] PREMIUM FEATURES
+--=============================================================
+local Premium = {}
+
+Premium.AutoStealV2 = function()
+    newW("AutoSteal_V2", function()
+        if not Config.Steal.Enabled then return end
+        local eggs = findEggs()
+        if #Config.Steal.Biomes > 0 then
+            local f = {}; for _, e in ipairs(eggs) do if inT(Config.Steal.Biomes, e.biome) then table.insert(f, e) end end
+            eggs = f
+        end
+        if #Config.Steal.Whitelist > 0 and Config.Steal.Mode == "Whitelist" then
+            local f = {}; for _, e in ipairs(eggs) do if inT(Config.Steal.Whitelist, e.name) then table.insert(f, e) end end
+            if #f > 0 then eggs = f end
+        end
+        local t = pickEgg(eggs); if not t then return end
+        if Config.Steal.UseFly then
+            if not Fly.active then Fly.on(Config.Steal.FlySpeed) end
+            local _, _, hrp = getChar()
+            if hrp then
+                local dir = t.part.Position - hrp.Position
+                if dir.Magnitude > 6 then hrp.CFrame = hrp.CFrame + dir.Unit * math.min(dir.Magnitude, 25) * 0.1 end
+            end
+        end
+        Config.Combat.AntiHit = true
+        Config.Combat.AntiRagdoll = true
+        Config.Combat.AntiKnockback = true
+        if AB.fire(Remotes.Steal, "Steal", t.part) then
+            notify("Steal V2", t.name.." ["..t.rarity.."]", 2)
+            if Config.Steal.ReturnToBase then
+                local b = findBase(); if b then tpTo(b) end
+            end
+        end
+    end)
+end
+
+Premium.AutoAngel = function()
+    newW("AutoAngel", function()
+        if not Config.Steal.Enabled then return end
+        for _, e in ipairs(findEggs()) do
+            if e.name:lower():find("angel") or e.biome:lower():find("angel") then
+                AB.fire(Remotes.Steal, "Steal", e.part); break
+            end
+        end
+    end)
+end
+
+Premium.AutoDemon = function()
+    newW("AutoDemon", function()
+        if not Config.Steal.Enabled then return end
+        for _, e in ipairs(findEggs()) do
+            if e.name:lower():find("demon") or e.biome:lower():find("demon") then
+                AB.fire(Remotes.Steal, "Steal", e.part); break
+            end
+        end
+    end)
+end
+
+Premium.MergedDet = function()
+    newW("MergedDet", function()
+        local _, _, hrp = getChar(); if not hrp then return end
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            local n = obj.Name:lower()
+            if (n:find("merged") or n:find("aetheron") or n:find("equinox")) and obj:IsA("BasePart") then
+                notify("Merged", "Detected!", 3)
+                if Config.Steal.Enabled then Config.Steal.Mode = "Rarest" end
+                task.wait(3)
+            end
+        end
+    end)
+end
+
+Premium.NightDet = function()
+    newW("NightDet", function()
+        local c = Lighting.ClockTime
+        if c > 18 or c < 6 then
+            for _, obj in ipairs(workspace:GetDescendants()) do
+                local n = obj.Name:lower()
+                if (n:find("angel") or n:find("demon")) and obj:IsA("BasePart") then
+                    notify("Night", obj.Name, 3); task.wait(3)
+                end
+            end
+        end
+        task.wait(2)
+    end)
+end
+
+Premium.AutoRing = function()
+    newW("AutoRing", function()
+        if not Config.Event.Ring then return end
+        AB.fire(Remotes.Ring, "Ring")
+        AB.fire(Remotes.Event, "Ring")
+    end)
+end
+
+Premium.AutoTeamClaim = function()
+    newW("AutoTeamClaim", function()
+        if not Config.Event.TeamClaim then return end
+        AB.fire(Remotes.Claim, "TeamClaim")
+        AB.fire(Remotes.Event, "Claim")
+    end)
+end
+
+Premium.AutoFusion = function()
+    newW("AutoFusion", function()
+        if not Config.Event.Fusion then return end
+        AB.fire(Remotes.Fusion, "Fusion")
+        AB.fire(Remotes.Event, "Fusion")
+    end)
+end
+
+Premium.AutoSell = function()
+    newW("AutoSell", function()
+        if not Config.Misc.AutoSell then return end
+        AB.fire(Remotes.Sell, "Sell", Config.Misc.SellRarity)
+    end)
+end
+
+Premium.AutoEquipBest = function()
+    newW("AutoEquipBest", function()
+        if not Config.Misc.AutoEquipBest then return end
+        AB.fire(Remotes.Place, "EquipBest")
+    end)
+end
+
+Premium.AutoClaimIndex = function()
+    newW("AutoClaimIndex", function()
+        if not Config.Misc.AutoClaimIndex then return end
+        AB.fire(Remotes.Claim, "Index")
+    end)
+end
+
+Premium.AutoPlace = function()
+    newW("AutoPlace", function()
+        if not Config.Hatch.AutoPlace then return end
+        AB.fire(Remotes.Place, "Place")
+    end)
+end
+
+Premium.AutoDropHeld = function()
+    newW("AutoDropHeld", function()
+        if not Config.Misc.AutoDropHeld then return end
+        local c = LP.Character; if not c then return end
+        for _, v in ipairs(c:GetChildren()) do
+            if v:IsA("Tool") and v.Name:lower():find("egg") then
+                AB.fire(Remotes.Steal, "Drop", v)
+            end
+        end
+    end)
+end
+
+Premium.AntiTrap = function()
+    newW("AntiTrap", function()
+        if not Config.Misc.AntiTrap then return end
+    end)
+end
+
+Premium.AntiRagdoll = function()
+    newW("AntiRagdoll", function()
+        if not Config.Combat.AntiRagdoll then return end
+        local _, h = getChar(); if h then safe(function()
+            h:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+            h:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+        end) end
+    end)
+end
+
+Premium.AntiKnockback = function()
+    newW("AntiKnockback", function()
+        if not Config.Combat.AntiKnockback then return end
+    end)
+end
+
+Premium.Godmode = function()
+    newW("Godmode", function()
+        if not Config.Misc.Godmode then return end
+        local _, h = getChar(); if h then h.MaxHealth = math.huge; h.Health = math.huge end
+    end)
+end
+
+Premium.SpeedMult = function()
+    newW("SpeedMult", function()
+        if not Config.Movement.Speed then return end
+        local _, h = getChar(); if h then h.WalkSpeed = Config.Movement.SpeedValue end
+    end)
+end
+
+Premium.InfJump = function()
+    if Premium._infConn then return end
+    Premium._infConn = UserInputService.JumpRequest:Connect(function()
+        if not Config.Movement.InfJump then return end
+        local _, h = getChar(); if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
+    end)
+    table.insert(BAZZ.Connections, Premium._infConn)
+end
+
+Premium.TeleportEgg = function()
+    newW("TeleportEgg", function()
+        if not Config.Teleport.ToEgg then return end
+        local t = pickEgg(findEggs()); if t then tpTo(t.part.Position) end
+        task.wait(0.6)
+    end)
+end
+
+Premium.TeleportBase = function()
+    newW("TeleportBase", function()
+        if not Config.Teleport.ToBase then return end
+        local b = findBase(); if b then tpTo(b) end
+        task.wait(1)
+    end)
+end
+
+Premium.ServerHop = function()
+    safe(function()
+        local r = game:HttpGet("https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100")
+        local d = HttpService:JSONDecode(r)
+        for _, s in ipairs(d.data) do
+            if s.playing < 3 and s.id ~= game.JobId then
+                TeleportService:TeleportToPlaceInstance(game.PlaceId, s.id, LP); break
+            end
+        end
+    end)
+end
+
+Premium.FixLagPro = function()
+    newW("FixLagPro", function()
+        if not Config.FixLag.Enabled then return end
+        safe(function()
+            for _, v in ipairs(workspace:GetDescendants()) do
+                if v:IsA("ParticleEmitter") or v:IsA("Smoke") or v:IsA("Fire") or v:IsA("Sparkles") then v.Enabled = false end
+                if v:IsA("Decal") or v:IsA("Texture") then v.Transparency = 1 end
+            end
+            Lighting.GlobalShadows = false
+            pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level01 end)
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p.Character then
+                    for _, v in ipairs(p.Character:GetDescendants()) do
+                        if v:IsA("Accessory") or v:IsA("Shirt") or v:IsA("Pants") then v:Destroy() end
+                    end
+                end
+            end
+        end)
+        task.wait(3)
+    end)
+end
+
+Premium.Webhook = function(msg)
+    if Config.Misc.Webhook == "" or not req then return end
+    safe(function()
+        req({
+            Url = Config.Misc.Webhook,
+            Method = "POST",
+            Headers = {["Content-Type"]="application/json"},
+            Body = HttpService:JSONEncode({content = "[BAZZ] "..msg}),
+        })
+    end)
+end
+
+--=============================================================
+-- [17] LOGO LOADER
+--=============================================================
+local LogoImage = nil
+
+local function loadLogo()
+    safe(function()
+        if writefile and readfile and isfile then
+            if not isfile("bazz_logo.jpg") then
+                local data = game:HttpGet(BAZZ.LogoURL)
+                writefile("bazz_logo.jpg", data)
+            end
+            LogoImage = getcustomasset and getcustomasset("bazz_logo.jpg") or nil
+        end
+    end)
+end
+loadLogo()
+
+--=============================================================
+-- [18] UI BUILD
+--=============================================================
+local Rayfield
+safe(function()
+    Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+end)
+
+if not Rayfield then
+    notify("BAZZ", "Rayfield gagal load", 6)
+    return
+end
+
+local Win = Rayfield:CreateWindow({
+    Name = "BAZZ",
+    LoadingTitle = "BAZZ Loading",
+    LoadingSubtitle = "by JOY",
+    ConfigurationSaving = {
+        Enabled = Config.General.AutoSave,
+        FolderName = "BAZZ",
+        FileName = "Config",
+    },
+    Discord = { Enabled = false },
+    KeySystem = true,
+    KeySettings = {
+        Title = "BAZZ Key",
+        Subtitle = "BAZZ / JOY",
+        Note = "BAZZ = Basic | JOY = Premium",
+        FileName = "BAZZKey",
+        SaveKey = true,
+        GrabKeyFromSite = false,
+        Key = {KEY_BASIC, KEY_PREMIUM},
+    },
+})
+
+BAZZ.UI = Win
+
+-- Logo di window (kecil)
+safe(function()
+    if LogoImage and Win.CreateImage then
+        Win:CreateImage({
+            Name = "Logo",
+            Image = LogoImage,
+            Scale = 1,
+            Callback = function() end,
+        })
+    end
+end)
+
+-- Tabs
+local T = {
+    Main     = Win:CreateTab("Main"),
+    Steal    = Win:CreateTab("Steal"),
+    Auto     = Win:CreateTab("Auto"),
+    Visual   = Win:CreateTab("Visual"),
+    Movement = Win:CreateTab("Movement"),
+    Events   = Win:CreateTab("Events"),
+    Settings = Win:CreateTab("Settings"),
+    Info     = Win:CreateTab("Info"),
+}
+
+local function isPrem() return BAZZ.Tier == "premium" end
+
+--=============================================================
+-- [19] TAB MAIN
+--=============================================================
+T.Main:CreateSection("Quick")
+
+T.Main:CreateButton({Name="Save Config", Callback=function() Basic.Save() end})
+T.Main:CreateButton({Name="Load Config", Callback=function() Basic.Load() end})
+
+T.Main:CreateToggle({Name="Auto Steal (Basic)", CurrentValue=false, Flag="BasicAutoSteal",
+    Callback=function(v)
+        Config.Steal.Enabled = v
+        if v then Basic.AutoSteal() else stopW("AutoSteal_Basic") end
+    end})
+
+T.Main:CreateToggle({Name="Auto Treadmill", CurrentValue=false, Flag="AutoTreadmill",
+    Callback=function(v)
+        Config.Treadmill.Enabled = v
+        if v then Basic.AutoTreadmill() else stopW("AutoTreadmill") end
+    end})
+
+T.Main:CreateToggle({Name="Auto Hatch", CurrentValue=false, Flag="AutoHatch",
+    Callback=function(v)
+        Config.Hatch.Enabled = v
+        if v then Basic.AutoHatch() else stopW("AutoHatch") end
+    end})
+
+T.Main:CreateToggle({Name="Auto Event", CurrentValue=false, Flag="AutoEvent",
+    Callback=function(v)
+        Config.Event.Enabled = v
+        if v then Basic.AutoEvent() else stopW("AutoEvent_Basic") end
+    end})
+
+T.Main:CreateToggle({Name="Anti Hit", CurrentValue=false, Flag="AntiHit",
+    Callback=function(v)
+        Config.Combat.AntiHit = v
+        if v then Basic.AntiHit() else stopW("AntiHit") end
+    end})
+
+T.Main:CreateToggle({Name="Auto Upgrade", CurrentValue=false, Flag="AutoUpgrade",
+    Callback=function(v)
+        Config.Upgrade.Enabled = v
+        if v then Basic.AutoUpgrade() else stopW("AutoUpgrade") end
+    end})
+
+T.Main:CreateToggle({Name="Auto Buy", CurrentValue=false, Flag="AutoBuy",
+    Callback=function(v)
+        Config.Buy.Enabled = v
+        if v then Basic.AutoBuy() else stopW("AutoBuy") end
+    end})
+
+T.Main:CreateToggle({Name="Anti AFK", CurrentValue=true, Flag="AntiAFK",
+    Callback=function(v) Config.AntiAFK.Enabled = v end})
+
+T.Main:CreateToggle({Name="Fix Lag (Basic)", CurrentValue=false, Flag="FixLag",
+    Callback=function(v)
+        Config.FixLag.Enabled = v
+        if v then Basic.FixLag() else stopW("FixLag") end
+    end})
+
+T.Main:CreateButton({Name="Bypass: LOCKED ON",
+    Callback=function() notify("Bypass","Locked ON — tidak bisa dimatikan",3) end})
+
+--=============================================================
+-- [20] TAB STEAL
+--=============================================================
+T.Steal:CreateSection("Premium Steal")
+
+T.Steal:CreateToggle({Name="[P] Auto Steal V2 (Fly + Anti Hit)", CurrentValue=false, Flag="StealV2",
+    Callback=function(v)
+        if v and not isPrem() then notify("Locked","Butuh JOY",3); return end
+        Config.Steal.Enabled = v
+        if v then Premium.AutoStealV2() else stopW("AutoSteal_V2") end
+    end})
+
+T.Steal:CreateDropdown({Name="[P] Steal Mode",
+    Options={"Rarest","Weight","Whitelist","Random","All"},
+    CurrentOption={"Rarest"}, MultipleOptions=false, Flag="StealMode",
+    Callback=function(o) if isPrem() then Config.Steal.Mode = o[1] end end})
+
+T.Steal:CreateSlider({Name="[P] Steal Delay", Range={0.15,1.0}, Increment=0.01, Suffix="s",
+    CurrentValue=0.28, Flag="StealDelay",
+    Callback=function(v) if isPrem() then AB.MinDelay = v end end})
+
+T.Steal:CreateSlider({Name="[P] Min Weight", Range={0,100000}, Increment=100, Suffix="w",
+    CurrentValue=0, Flag="MinW",
+    Callback=function(v) if isPrem() then Config.Steal.MinWeight = v end end})
+
+T.Steal:CreateSlider({Name="[P] Max Weight", Range={0,1000000}, Increment=1000, Suffix="w",
+    CurrentValue=1000000, Flag="MaxW",
+    Callback=function(v) if isPrem() then Config.Steal.MaxWeight = v end end})
+
+T.Steal:CreateDropdown({Name="[P] Biome Filter",
+    Options={"Forest","Lake","Desert","Jungle","Snow","Volcano","Abyss Ocean","Prehistoric","Cosmic","Cherry Blossom","Titan Temple","Angels","Demons","Merged"},
+    CurrentOption={}, MultipleOptions=true, Flag="BiomeF",
+    Callback=function(o) if isPrem() then Config.Steal.Biomes = o end end})
+
+T.Steal:CreateDropdown({Name="[P] Egg Whitelist",
+    Options={"Forest Egg","Lake Egg","Desert Egg","Jungle Egg","Snow Egg","Volcano Egg","Abyss Egg","Prehistoric Egg","Cosmic Egg","Cherry Egg","Titan Egg","Angel Egg","Demon Egg","Merged Egg"},
+    CurrentOption={}, MultipleOptions=true, Flag="EggW",
+    Callback=function(o) if isPrem() then Config.Steal.Whitelist = o end end})
+
+T.Steal:CreateToggle({Name="[P] Use Fly During Steal", CurrentValue=true, Flag="StealFly",
+    Callback=function(v) if isPrem() then Config.Steal.UseFly = v end end})
+
+T.Steal:CreateSlider({Name="[P] Fly Speed", Range={50,400}, Increment=5, Suffix="s",
+    CurrentValue=180, Flag="StealFlySpd",
+    Callback=function(v)
+        if not isPrem() then return end
+        Config.Steal.FlySpeed = v
+        if Fly.active then Fly.off(); Fly.on(v) end
+    end})
+
+T.Steal:CreateToggle({Name="[P] Return to Base", CurrentValue=true, Flag="ReturnBase",
+    Callback=function(v) if isPrem() then Config.Steal.ReturnToBase = v end end})
+
+T.Steal:CreateToggle({Name="[P] Auto Steal Angel Egg", CurrentValue=false, Flag="StealAngel",
+    Callback=function(v)
+        if v and not isPrem() then return end
+        if v then Premium.AutoAngel() else stopW("AutoAngel") end
+    end})
+
+T.Steal:CreateToggle({Name="[P] Auto Steal Demon Egg", CurrentValue=false, Flag="StealDemon",
+    Callback=function(v)
+        if v and not isPrem() then return end
+        if v then Premium.AutoDemon() else stopW("AutoDemon") end
+    end})
+
+T.Steal:CreateToggle({Name="[P] Merged Biome Detector", CurrentValue=false, Flag="MergedD",
+    Callback=function(v)
+        if v and not isPrem() then return end
+        if v then Premium.MergedDet() else stopW("MergedDet") end
+    end})
+
+T.Steal:CreateToggle({Name="[P] Night Biome Detector", CurrentValue=false, Flag="NightD",
+    Callback=function(v)
+        if v and not isPrem() then return end
+        if v then Premium.NightDet() else stopW("NightDet") end
+    end})
+
+--=============================================================
+-- [21] TAB AUTO
+--=============================================================
+T.Auto:CreateSection("Automation")
+
+T.Auto:CreateToggle({Name="[P] Auto Place Egg", CurrentValue=false, Flag="AutoPlace",
+    Callback=function(v)
+        if v and not isPrem() then return end
+        Config.Hatch.AutoPlace = v
+        if v then Premium.AutoPlace() else stopW("AutoPlace") end
+    end})
+
+T.Auto:CreateToggle({Name="[P] Auto Sell Trash", CurrentValue=false, Flag="AutoSell",
+    Callback=function(v)
+        if v and not isPrem() then return end
+        Config.Misc.AutoSell = v
+        if v then Premium.AutoSell() else stopW("AutoSell") end
+    end})
+
+T.Auto:CreateDropdown({Name="[P] Sell Rarity Threshold",
+    Options={"Common","Rare","Epic","Legendary","Mythic","Secret","Eternal","Divine"},
+    CurrentOption={"Common"}, MultipleOptions=false, Flag="SellR",
+    Callback=function(o) if isPrem() then Config.Misc.SellRarity = o[1] end end})
+
+T.Auto:CreateToggle({Name="[P] Auto Equip Best Pet", CurrentValue=false, Flag="EquipBest",
+    Callback=function(v)
+        if v and not isPrem() then return end
+        Config.Misc.AutoEquipBest = v
+        if v then Premium.AutoEquipBest() else stopW("AutoEquipBest") end
+    end})
+
+T.Auto:CreateToggle({Name="[P] Auto Claim Index", CurrentValue=false, Flag="ClaimIdx",
+    Callback=function(v)
+        if v and not isPrem() then return end
+        Config.Misc.AutoClaimIndex = v
+        if v then Premium.AutoClaimIndex() else stopW("AutoClaimIndex") end
+    end})
+
+T.Auto:CreateToggle({Name="[P] Auto Drop Held Egg", CurrentValue=false, Flag="DropHeld",
+    Callback=function(v)
+        if v and not isPrem() then return end
+        Config.Misc.AutoDropHeld = v
+        if v then Premium.AutoDropHeld() else stopW("AutoDropHeld") end
+    end})
+
+T.Auto:CreateToggle({Name="[P] Anti Trap", CurrentValue=false, Flag="AntiTrap",
+    Callback=function(v)
+        if v and not isPrem() then return end
+        Config.Misc.AntiTrap = v
+        if v then Premium.AntiTrap() else stopW("AntiTrap") end
+    end})
+
+T.Auto:CreateToggle({Name="[P] Server Hop (Low Pop)", CurrentValue=false, Flag="ServerHop",
+    Callback=function(v)
+        if v and not isPrem() then return end
+        if v then Premium.ServerHop() end
+    end})
+
+T.Auto:CreateToggle({Name="[P] Godmode", CurrentValue=false, Flag="Godmode",
+    Callback=function(v)
+        if v and not isPrem() then return end
+        Config.Misc.Godmode = v
+        if v then Premium.Godmode() else stopW("Godmode") end
+    end})
+
+T.Auto:CreateToggle({Name="[P] Anti Ragdoll", CurrentValue=false, Flag="AntiRag",
+    Callback=function(v)
+        if v and not isPrem() then return end
+        Config.Combat.AntiRagdoll = v
+        if v then Premium.AntiRagdoll() else stopW("AntiRagdoll") end
+    end})
+
+T.Auto:CreateToggle({Name="[P] Anti Knockback", CurrentValue=false, Flag="AntiKB",
+    Callback=function(v)
+        if v and not isPrem() then return end
+        Config.Combat.AntiKnockback = v
+        if v then Premium.AntiKnockback() else stopW("AntiKnockback") end
+    end})
+
+--=============================================================
+-- [22] TAB VISUAL
+--=============================================================
+T.Visual:CreateSection("ESP")
+
+T.Visual:CreateToggle({Name="ESP Egg", CurrentValue=false, Flag="ESPEgg",
+    Callback=function(v) Config.ESP.Egg.Enabled = v end})
+T.Visual:CreateToggle({Name="ESP Egg Box", CurrentValue=true, Flag="ESPEggBox",
+    Callback=function(v) Config.ESP.Egg.Box = v end})
+T.Visual:CreateToggle({Name="ESP Egg Name", CurrentValue=true, Flag="ESPEggName",
+    Callback=function(v) Config.ESP.Egg.Name = v end})
+T.Visual:CreateToggle({Name="ESP Egg Distance", CurrentValue=true, Flag="ESPEggDist",
+    Callback=function(v) Config.ESP.Egg.Distance = v end})
+T.Visual:CreateSlider({Name="ESP Egg Max Distance", Range={100,10000}, Increment=100, Suffix="m",
+    CurrentValue=3000, Flag="ESPEggMax",
+    Callback=function(v) Config.ESP.Egg.MaxDistance = v end})
+
+T.Visual:CreateToggle({Name="[P] ESP Guardian", CurrentValue=false, Flag="ESPGua",
+    Callback=function(v)
+        if v and not isPrem() then return end
+        Config.ESP.Guardian.Enabled = v
+    end})
+
+T.Visual:CreateToggle({Name="[P] ESP Player", CurrentValue=false, Flag="ESPPlr",
+    Callback=function(v)
+        if v and not isPrem() then return end
+        Config.ESP.Player.Enabled = v
+    end})
+
+--=============================================================
+-- [23] TAB MOVEMENT
+--=============================================================
+T.Movement:CreateSection("Movement")
+
+T.Movement:CreateToggle({Name="Fly", CurrentValue=false, Flag="Fly",
+    Callback=function(v)
+        Config.Movement.Fly = v
+        if v then Fly.on(Config.Movement.FlySpeed) else Fly.off() end
+    end})
+
+T.Movement:CreateSlider({Name="Fly Speed", Range={30,500}, Increment=5, Suffix="s",
+    CurrentValue=120, Flag="FlySpd",
+    Callback=function(v)
+        Config.Movement.FlySpeed = v
+        if Fly.active then Fly.off(); Fly.on(v) end
+    end})
+
+T.Movement:CreateToggle({Name="Noclip", CurrentValue=false, Flag="Noclip",
+    Callback=function(v)
+        Config.Movement.Noclip = v
+        if v then Basic.Noclip() else stopW("Noclip") end
+    end})
+
+T.Movement:CreateToggle({Name="[P] Speed Multiplier", CurrentValue=false, Flag="SpeedM",
+    Callback=function(v)
+        if v and not isPrem() then return end
+        Config.Movement.Speed = v
+        if v then Premium.SpeedMult() else
+            stopW("SpeedMult")
+            local _, h = getChar(); if h then h.WalkSpeed = 16 end
+        end
+    end})
+
+T.Movement:CreateSlider({Name="[P] Speed Value", Range={16,250}, Increment=1,
+    CurrentValue=32, Flag="SpeedVal",
+    Callback=function(v) if isPrem() then Config.Movement.SpeedValue = v end end})
+
+T.Movement:CreateToggle({Name="[P] Infinite Jump", CurrentValue=false, Flag="InfJump",
+    Callback=function(v)
+        if v and not isPrem() then return end
+        Config.Movement.InfJump = v
+        if v then Premium.InfJump() end
+    end})
+
+T.Movement:CreateToggle({Name="[P] Teleport to Egg", CurrentValue=false, Flag="TPEgg",
+    Callback=function(v)
+        if v and not isPrem() then return end
+        Config.Teleport.ToEgg = v
+        if v then Premium.TeleportEgg() else stopW("TeleportEgg") end
+    end})
+
+T.Movement:CreateToggle({Name="[P] Teleport to Base", CurrentValue=false, Flag="TPBase",
+    Callback=function(v)
+        if v and not isPrem() then return end
+        Config.Teleport.ToBase = v
+        if v then Premium.TeleportBase() else stopW("TeleportBase") end
+    end})
+
+--=============================================================
+-- [24] TAB EVENTS
+--=============================================================
+T.Events:CreateSection("Events")
+
+T.Events:CreateToggle({Name="[P] Auto Ring Event", CurrentValue=false, Flag="AutoRing",
+    Callback=function(v)
+        if v and not isPrem() then return end
+        Config.Event.Ring = v
+        if v then Premium.AutoRing() else stopW("AutoRing") end
+    end})
+
+T.Events:CreateToggle({Name="[P] Auto Claim Team Egg", CurrentValue=false, Flag="AutoTeam",
+    Callback=function(v)
+        if v and not isPrem() then return end
+        Config.Event.TeamClaim = v
+        if v then Premium.AutoTeamClaim() else stopW("AutoTeamClaim") end
+    end})
+
+T.Events:CreateToggle({Name="[P] Auto Fusion", CurrentValue=false, Flag="AutoFusion",
+    Callback=function(v)
+        if v and not isPrem() then return end
+        Config.Event.Fusion = v
+        if v then Premium.AutoFusion() else stopW("AutoFusion") end
+    end})
+
+--=============================================================
+-- [25] TAB SETTINGS
+--=============================================================
+T.Settings:CreateSection("Config")
+
+T.Settings:CreateToggle({Name="Notifications", CurrentValue=true, Flag="Notify",
+    Callback=function(v) Config.General.Notify = v end})
+
+T.Settings:CreateToggle({Name="Auto Save (60s)", CurrentValue=true, Flag="AutoSave",
+    Callback=function(v) Config.General.AutoSave = v end})
+
+T.Settings:CreateButton({Name="Save Now", Callback=function() Basic.Save() end})
+T.Settings:CreateButton({Name="Load Now", Callback=function() Basic.Load() end})
+
+T.Settings:CreateButton({Name="Reset Movement", Callback=function()
+    local _, h = getChar()
+    if h then h.WalkSpeed = 16; h.JumpPower = 50 end
+    Fly.off()
+end})
+
+T.Settings:CreateInput({Name="[P] Discord Webhook URL",
+    PlaceholderText="https://discord.com/api/webhooks/...",
+    CurrentValue="", Flag="Webhook",
+    Callback=function(v) if isPrem() then Config.Misc.Webhook = v end end})
+
+T.Settings:CreateSection("Anti-Ban")
+
+T.Settings:CreateParagraph({Title="Status",
+    Content="Bypass: ON | Anti-Ban: ON | Rate Limit: enforced | gethui: active | Alt account: recommended"})
+
+T.Settings:CreateButton({Name="Force Save + Reload UI",
+    Callback=function()
+        Basic.Save()
+        notify("BAZZ","Saved. Rejoin untuk full reload.",4)
+    end})
+
+--=============================================================
+-- [26] TAB INFO
+--=============================================================
+T.Info:CreateSection("About")
+
+T.Info:CreateParagraph({Title="BAZZ v1.0",
+    Content="Owner: JOY | Map: Steal an Egg | Tier: "..tostring(BAZZ.Tier).." | Key: "..tostring(BAZZ.Key)})
+
+T.Info:CreateParagraph({Title="Remotes",
+    Content="Total: "..#Remotes.All.." | Steal: "..tostring(Remotes.Steal~=nil).." | Hatch: "..tostring(Remotes.Hatch~=nil).." | Place: "..tostring(Remotes.Place~=nil)})
+
+T.Info:CreateParagraph({Title="Anti-Ban",
+    Content="Byfron-aware | Rate limit: "..tostring(AB.MinDelay).."s | Randomize: ON | gethui: ON"})
+
+T.Info:CreateButton({Name="Show Logo",
+    Callback=function()
+        if LogoImage and Drawing and Drawing.new then
+            safe(function()
+                local img = Drawing.new("Image")
+                img.Data = LogoImage
+                img.Size = Vector2.new(400, 400)
+                img.Position = Vector2.new(200, 200)
+                img.Visible = true
+                task.delay(5, function() pcall(function() img:Remove() end) end)
+            end)
+        end
+    end})
+
+--=============================================================
+-- [27] INIT + AUTOSAVE
+--=============================================================
+scanRemotes()
+Basic.AntiAFK()
+
+newW("AutoSave", function()
+    if not Config.General.AutoSave then return end
+    task.wait(60)
+    Basic.Save()
+end)
+
+newW("RareNotify", function()
+    if Config.Misc.Webhook == "" then return end
+    for _, e in ipairs(findEggs()) do
+        if rankR(e.rarity) <= 3 then
+            Premium.Webhook("Rare egg: "..e.name.." ["..e.rarity.."]")
+            task.wait(5)
+        end
+    end
+    task.wait(3)
+end)
+
+--=============================================================
+-- [28] CLEANUP
+--=============================================================
+local function cleanup()
+    for _, w in pairs(BAZZ.Workers) do w.running = false end
+    for _, c in ipairs(BAZZ.Connections) do pcall(function() c:Disconnect() end) end
+    for k,_ in pairs(BAZZ.Drawings) do ESP.clear(k) end
+    Fly.off()
+    local _, h = getChar()
+    if h then h.WalkSpeed = 16; h.JumpPower = 50; h.UseJumpPower = true end
+end
+
+safe(function()
+    local UnloadTab = Win:CreateTab("Unload")
+    UnloadTab:CreateButton({Name="Unload BAZZ",
+        Callback=function()
+            cleanup()
+            Win:Destroy()
+        end})
+end)
+
+--=============================================================
+-- [29] BOOT
+--=============================================================
+notify("BAZZ v1.0", "Loaded — Key tier: "..tostring(BAZZ.Tier), 6)
+log("BAZZ ready. Owner: JOY.")
