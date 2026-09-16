@@ -1,66 +1,1875 @@
 --[[
-    BAZZ v3.1 — STEAL AN EGG
-    Fix: Key prompt muncul | Lightweight | Full Tabs
---]]
+    Steal An Egg — Script v2.0
+    Author  : joy
+    Version : 2.0.0
+    UI      : Custom (bukan Rayfield/Foxname)
+    Map     : Steal An Egg
+    Fitur   : 42 (28 Basic + 14 Premium)
+    Key     : Basic (free) / Premium ("Joy")
+]]
 
-local Players = game:GetService("Players")
-local RS = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
-local UIS = game:GetService("UserInputService")
-local TS = game:GetService("TweenService")
-local Http = game:GetService("HttpService")
-local Teleport = game:GetService("TeleportService")
-local LP = Players.LocalPlayer
+-- ============================================================
+-- SERVICES
+-- ============================================================
+local Players           = game:GetService("Players")
+local RunService        = game:GetService("RunService")
+local UIS               = game:GetService("UserInputService")
+local Lighting          = game:GetService("Lighting")
+local StarterGui        = game:GetService("StarterGui")
+local VirtualUser       = game:GetService("VirtualUser")
+local HttpService       = game:GetService("HttpService")
+local TeleportService   = game:GetService("TeleportService")
+local CoreGui           = game:GetService("CoreGui")
+local TweenService      = game:GetService("TweenService")
+local CollectionService = game:GetService("CollectionService")
 
-local _writefile = writefile or getgenv().writefile
-local _readfile = readfile or getgenv().readfile
-local _isfile = isfile or getgenv().isfile
-local _isfolder = isfolder or getgenv().isfolder
-local _makefolder = makefolder or getgenv().makefolder
-local _gethui = gethui or getgenv().gethui
-local _getrawmetatable = getrawmetatable or getgenv().getrawmetatable
-local _setreadonly = setreadonly or getgenv().setreadonly
-local _getnamecallmeth = getnamecallmethod or getgenv().getnamecallmethod
-local _newcclosure = newcclosure or getgenv().newcclosure or function(f) return f end
+local LP     = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
 
-local FOLDER = "BazzConfig"
-local CONFIG_FILE = FOLDER .. "/stealanegg_v3.json"
-pcall(function()
-    if not _isfolder(FOLDER) then _makefolder(FOLDER) end
-end)
+-- ============================================================
+-- CONFIG
+-- ============================================================
+local Config = {
+    Enabled = true,
+    Notify  = true,
+    Key     = "",
+    IsPremium = false,
 
-local _k1 = "ba" .. "zz"
-local _k2 = "J" .. "oy"
+    -- ESP
+    ESP_Egg_Enabled       = false,
+    ESP_Egg_MaxDist       = 99999,
+    ESP_Egg_ShowTier      = true,
+    ESP_Egg_ShowName      = true,
+    ESP_Egg_ShowDist      = true,
+    ESP_Player_Enabled    = false,
+    ESP_Player_Name       = true,
+    ESP_Player_HP         = true,
+    ESP_Player_Dist       = true,
+    ESP_Base_Enabled      = false,
+    ESP_Antena_Enabled    = false,
+    ESP_Antena_Height     = 250,
+    ESP_Antena_Thickness  = 2,
+    ESP_Biome_Enabled     = false,
+    ESP_Event_Enabled     = false,
 
-local S = {
-    tier = "none", authed = false, conn = {}, remotes = {},
-    espCache = {}, highlightCache = {}, config = {}, ui = {},
-    kickBlocked = 0, paused = false, run = true
+    -- Steal
+    Steal_Enabled         = false,
+    Steal_Priority        = "Nearest",
+    Steal_Delay           = 0.5,
+    Steal_Filter          = "All",
+    Steal_FilterName      = "",
+    ReturnBase_Enabled    = false,
+    ReturnBase_Delay      = 0.3,
+
+    -- Collect
+    CollectEgg_Enabled    = false,
+    CollectEgg_Range      = 100,
+    Deposit_Enabled       = false,
+    Deposit_Interval      = 0.5,
+    Hatch_Enabled         = false,
+    FarmTreadmill_Enabled = false,
+
+    -- Auto
+    Rebirth_Enabled       = false,
+    Rebirth_Interval      = 5,
+    BuyEgg_Enabled        = false,
+    BuyEgg_Tier           = "All",
+    Upgrade_Enabled       = false,
+    ClaimDaily_Enabled    = false,
+    AutoEvent_Enabled     = false,
+    AutoRift_Enabled      = false,
+    AutoMerged_Enabled    = false,
+
+    -- Defense
+    GodMode_Enabled       = false,
+    GodMode_LockHP        = 1000,
+    AntiGuardian_Enabled  = false,
+    AntiSteal_Enabled     = false,
+
+    -- Movement
+    Speed_Enabled         = false,
+    Speed_Value           = 60,
+    InfJump_Enabled       = false,
+    Fly_Enabled           = false,
+    Fly_Speed             = 50,
+    NoClip_Enabled        = false,
+
+    -- Visual
+    FullBright_Enabled    = false,
+
+    -- Premium
+    StealFly_Enabled      = false,
+    StealFly_Speed        = 120,
+    SilentSteal_Enabled   = false,
+    PriorityDivine_Enabled= false,
+    KillAura_Enabled      = false,
+    KillAura_Range        = 30,
+
+    -- Misc
+    AntiAFK_Enabled       = true,
+    Bypass_MaxSpeed       = 60,
 }
 
-local DEFAULT = {
-    autoSteal = false, stealDelay = 0.35, stealBig = false, stealSecret = false,
-    stealBiome = "all", stealWeightMin = 0,
-    autoHatch = false, autoPlace = false, autoSell = false,
-    autoTreadmill = false, autoUpgrade = false, autoEvent = false, claimReward = false,
-    espEgg = false, espGuardian = false, espPlayer = false,
-    espMaxDist = math.huge, espTeamCheck = false,
-    speedBoost = false, speedValue = 50,
-    infiniteJump = false, noclip = false,
-    fly = false, flyMode = "CFrame", flySpeed = 80,
-    guardianBypass = false, advancedSteal = false,
-    antiBan = true, antiKick = true, antiRob = true, autoRejoin = true,
-    uiKeybind = "RightShift"
+-- ============================================================
+-- TIER DATA
+-- ============================================================
+local TierOrder = {
+    "Common", "Uncommon", "Rare", "Epic", "Legendary",
+    "Mythic", "Cosmic", "Secret", "Eternal", "Divine"
 }
 
-local function deepCopy(t)
-    local o = {}
-    for k, v in pairs(t) do o[k] = type(v) == "table" and deepCopy(v) or v end
-    return o
+local TierColor = {
+    Common    = Color3.fromRGB(180, 180, 180),
+    Uncommon  = Color3.fromRGB(100, 255, 100),
+    Rare      = Color3.fromRGB(80, 150, 255),
+    Epic      = Color3.fromRGB(180, 80, 255),
+    Legendary = Color3.fromRGB(255, 200, 50),
+    Mythic    = Color3.fromRGB(255, 100, 200),
+    Cosmic    = Color3.fromRGB(150, 100, 255),
+    Secret    = Color3.fromRGB(255, 80, 80),
+    Eternal   = Color3.fromRGB(255, 255, 100),
+    Divine    = Color3.fromRGB(255, 255, 255),
+}
+
+local TierValue = {
+    Common=1, Uncommon=2, Rare=3, Epic=4, Legendary=5,
+    Mythic=6, Cosmic=7, Secret=8, Eternal=9, Divine=10
+}
+
+local BiomeList = {
+    "Forest", "Lake", "Desert", "Jungle", "Snow", "Volcano",
+    "Abyss Ocean", "Prehistoric", "Cosmic", "Cherry Blossom",
+    "Titan Temple"
+}
+
+local EventKeywords = {
+    "angel", "demon", "daemon", "rift", "meteor", "airdrop", "air drop",
+    "boss", "titan", "event", "raid", "admin", "merged"
+}
+
+-- ============================================================
+-- STATE
+-- ============================================================
+local State = {
+    Conns         = {},
+    ESP           = {},
+    EggESP        = {},
+    BaseESP       = {},
+    BiomeESP      = {},
+    EventESP      = {},
+    UI            = {},
+    Watermark     = nil,
+    SpeedBV       = nil,
+    FlyBV         = nil,
+    FlyBG         = nil,
+    OrigWS        = 16,
+    Hooked        = false,
+    LastSteal     = 0,
+    LastDeposit   = 0,
+    LastRebirth   = 0,
+    OrigLight     = {
+        Ambient        = Lighting.Ambient,
+        OutdoorAmbient = Lighting.OutdoorAmbient,
+        Brightness     = Lighting.Brightness,
+        FogEnd         = Lighting.FogEnd,
+        GlobalShadows  = Lighting.GlobalShadows,
+    },
+}
+
+-- ============================================================
+-- UTIL
+-- ============================================================
+local function Notify(title, text)
+    if not Config.Notify then return end
+    pcall(function()
+        StarterGui:SetCore("SendNotification", { Title = title, Text = text, Duration = 3 })
+    end)
 end
 
-local function loadConfig()
-    S.config = deepCopy(DEFAULT)
+local function GetChar(plr)
+    if not plr then return nil end
+    local c = plr.Character
+    if not c then return nil end
+    local hrp = c:FindFirstChild("HumanoidRootPart")
+    local hum = c:FindFirstChildOfClass("Humanoid")
+    if not hrp or not hum or hum.Health <= 0 then return nil end
+    return c, hrp, hum
+end
+
+local function W2S(pos)
+    local sp, on = Camera:WorldToViewportPoint(pos)
+    if not on or sp.Z <= 0 then return nil end
+    return Vector2.new(sp.X, sp.Y)
+end
+
+local function GetMyHRP()
+    local c = LP.Character
+    if not c then return nil end
+    return c:FindFirstChild("HumanoidRootPart")
+end
+
+local function FirePrompt(obj)
+    if not obj then return end
+    local pp = obj:FindFirstChildOfClass("ProximityPrompt")
+    if not pp then
+        for _, d in ipairs(obj:GetDescendants()) do
+            if d:IsA("ProximityPrompt") then pp = d; break end
+        end
+    end
+    if pp then pcall(function() fireproximityprompt(pp) end) end
+end
+
+local function IsEgg(obj)
+    if not obj then return false end
+    local nm = obj.Name:lower()
+    return nm:find("egg") and not nm:find("eggshell")
+end
+
+local function IsBase(obj)
+    if not obj then return false end
+    local nm = obj.Name:lower()
+    return nm:find("base") or nm:find("plot") or nm:find("pen") or nm:find("farm")
+end
+
+local function GetEggTier(egg)
+    if not egg then return "Common" end
+    local nm = egg.Name:lower()
+
+    -- Cek attribute dulu
+    local attr = egg:GetAttribute("Rarity")
+        or egg:GetAttribute("Tier")
+        or egg:GetAttribute("Type")
+    if attr then
+        for _, t in ipairs(TierOrder) do
+            if tostring(attr):lower() == t:lower() then return t end
+        end
+    end
+
+    -- Fallback ke nama
+    for i = #TierOrder, 1, -1 do
+        local t = TierOrder[i]
+        if nm:find(t:lower()) then return t end
+    end
+    return "Common"
+end
+
+local function TierColor3(tier)
+    return TierColor[tier] or Color3.fromRGB(200, 200, 200)
+end
+
+local function GetEggsInMap()
+    local eggs = {}
+    local myHRP = GetMyHRP()
+    if not myHRP then return eggs end
+
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and IsEgg(obj) then
+            local tier = GetEggTier(obj)
+            local d = (obj.Position - myHRP.Position).Magnitude
+            table.insert(eggs, { Part = obj, Distance = d, Tier = tier, TierVal = TierValue[tier] or 1 })
+        end
+    end
+    return eggs
+end
+
+local function IsFiring()
+    if UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then return true end
+    if UIS.TouchEnabled and #UIS:GetTouches() > 0 then return true end
+    return false
+end
+
+local function IsPremiumOnly(featureName)
+    if Config.IsPremium then return true end
+    Notify("Premium Only", featureName .. " cuma buat Premium. ketik key 'Joy'.")
+    return false
+end
+
+-- ============================================================
+-- HOOKS (Bypass + God Mode)
+-- ============================================================
+local function SetupHooks()
+    if State.Hooked then return end
+    State.Hooked = true
+
+    pcall(function()
+        local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+        if hum then State.OrigWS = hum.WalkSpeed end
+    end)
+
+    pcall(function()
+        local mt = getrawmetatable(game)
+        local on = mt.__newindex
+        setreadonly(mt, false)
+
+        mt.__newindex = newcclosure(function(self, k, v)
+            if not checkcaller() and typeof(self) == "Instance" then
+                if self:IsA("Humanoid") then
+                    if k == "WalkSpeed" and typeof(v) == "number"
+                       and v > Config.Bypass_MaxSpeed and not Config.Speed_Enabled and not Config.StealFly_Enabled then
+                        return on(self, k, Config.Bypass_MaxSpeed)
+                    end
+                    if Config.GodMode_Enabled and k == "Health" and typeof(v) == "number" then
+                        if v < Config.GodMode_LockHP and self.Parent == LP.Character then
+                            return on(self, k, Config.GodMode_LockHP)
+                        end
+                    end
+                end
+            end
+            return on(self, k, v)
+        end)
+
+        setreadonly(mt, true)
+    end)
+end
+
+local function RunBypassTick()
+    local c = LP.Character
+    if not c then return end
+    local hum = c:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    if hum.WalkSpeed > Config.Bypass_MaxSpeed and not Config.Speed_Enabled and not Config.StealFly_Enabled then
+        hum.WalkSpeed = State.OrigWS
+    end
+end
+
+-- ============================================================
+-- STEAL EGG
+-- ============================================================
+local function FilterEgg(egg)
+    if Config.Steal_Filter == "All" then return true end
+    if Config.Steal_Filter == "Priority" then
+        return egg.Tier == Config.Steal_FilterName
+    end
+    return true
+end
+
+local function RunStealEgg()
+    if not Config.Steal_Enabled then return end
+    local now = tick()
+    if now - State.LastSteal < Config.Steal_Delay then return end
+    State.LastSteal = now
+
+    local myHRP = GetMyHRP()
+    if not myHRP then return end
+
+    local eggs = GetEggsInMap()
+    if #eggs == 0 then return end
+
+    -- Filter
+    local filtered = {}
+    for _, e in ipairs(eggs) do
+        if FilterEgg(e) then table.insert(filtered, e) end
+    end
+    if #filtered == 0 then return end
+
+    -- Premium: Priority Divine/Rare
+    if Config.PriorityDivine_Enabled and Config.IsPremium then
+        table.sort(filtered, function(a, b)
+            return (a.TierVal or 0) > (b.TierVal or 0)
+        end)
+    elseif Config.Steal_Priority == "Nearest" then
+        table.sort(filtered, function(a, b) return a.Distance < b.Distance end)
+    elseif Config.Steal_Priority == "Rarest" then
+        table.sort(filtered, function(a, b) return (a.TierVal or 0) > (b.TierVal or 0) end)
+    elseif Config.Steal_Priority == "LowestTier" then
+        table.sort(filtered, function(a, b) return (a.TierVal or 0) < (b.TierVal or 0) end)
+    end
+
+    local target = filtered[1]
+    if not target then return end
+
+    -- Teleport ke egg
+    if Config.StealFly_Enabled and Config.IsPremium then
+        -- Premium pakai fly-style teleport (smooth + no clip sementara)
+        pcall(function()
+            myHRP.CFrame = CFrame.new(target.Part.Position + Vector3.new(0, 8, 0))
+        end)
+    else
+        -- Basic pakai daratan + speed tinggi
+        pcall(function()
+            myHRP.CFrame = CFrame.new(target.Part.Position + Vector3.new(0, 3, 0))
+        end)
+    end
+
+    -- Trigger pickup
+    if Config.SilentSteal_Enabled and Config.IsPremium then
+        pcall(function()
+            firetouchinterest(myHRP, target.Part, 0)
+            task.wait(0.05)
+            firetouchinterest(myHRP, target.Part, 1)
+        end)
+    else
+        FirePrompt(target.Part)
+        pcall(function()
+            firetouchinterest(myHRP, target.Part, 0)
+            task.wait()
+            firetouchinterest(myHRP, target.Part, 1)
+        end)
+    end
+
+    -- Return base
+    if Config.ReturnBase_Enabled then
+        task.wait(Config.ReturnBase_Delay)
+        RunReturnBase()
+    end
+end
+
+function RunReturnBase()
+    local myHRP = GetMyHRP()
+    if not myHRP then return end
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and IsBase(obj) then
+            local owner = obj:GetAttribute("Owner") or obj:GetAttribute("Player") or obj:GetAttribute("UserId")
+            if owner and tostring(owner) == tostring(LP.UserId) then
+                pcall(function() myHRP.CFrame = CFrame.new(obj.Position + Vector3.new(0, 5, 0)) end)
+                return
+            end
+        end
+    end
+end
+
+-- ============================================================
+-- COLLECT / DEPOSIT / HATCH / TREADMILL
+-- ============================================================
+local function RunCollectEgg()
+    if not Config.CollectEgg_Enabled then return end
+    local myHRP = GetMyHRP()
+    if not myHRP then return end
+
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and IsEgg(obj) then
+            if (obj.Position - myHRP.Position).Magnitude <= Config.CollectEgg_Range then
+                pcall(function() obj.CFrame = myHRP.CFrame end)
+                FirePrompt(obj)
+                pcall(function()
+                    firetouchinterest(myHRP, obj, 0)
+                    task.wait()
+                    firetouchinterest(myHRP, obj, 1)
+                end)
+            end
+        end
+    end
+end
+
+local function RunDeposit()
+    if not Config.Deposit_Enabled then return end
+    local now = tick()
+    if now - State.LastDeposit < Config.Deposit_Interval then return end
+    State.LastDeposit = now
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        local nm = obj.Name:lower()
+        if nm:find("storage") or nm:find("deposit") or nm:find("pen") then
+            FirePrompt(obj)
+        end
+    end
+end
+
+local function RunHatch()
+    if not Config.Hatch_Enabled then return end
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        local nm = obj.Name:lower()
+        if nm:find("hatch") or nm:find("incubator") or nm:find("nest") then
+            FirePrompt(obj)
+        end
+    end
+end
+
+local function RunFarmTreadmill()
+    if not Config.FarmTreadmill_Enabled then return end
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        local nm = obj.Name:lower()
+        if nm:find("treadmill") or nm:find("farm") or nm:find("grind") then
+            FirePrompt(obj)
+        end
+    end
+end
+
+-- ============================================================
+-- AUTO
+-- ============================================================
+local function RunRebirth()
+    if not Config.Rebirth_Enabled then return end
+    local now = tick()
+    if now - State.LastRebirth < Config.Rebirth_Interval then return end
+    State.LastRebirth = now
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        local nm = obj.Name:lower()
+        if nm:find("rebirth") then FirePrompt(obj) end
+    end
+end
+
+local function RunBuyEgg()
+    if not Config.BuyEgg_Enabled then return end
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        local nm = obj.Name:lower()
+        if nm:find("shop") or nm:find("buy") then
+            if Config.BuyEgg_Tier == "All" then
+                FirePrompt(obj)
+            else
+                if GetEggTier(obj) == Config.BuyEgg_Tier then FirePrompt(obj) end
+            end
+        end
+    end
+end
+
+local function RunUpgrade()
+    if not Config.Upgrade_Enabled then return end
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        local nm = obj.Name:lower()
+        if nm:find("upgrade") then FirePrompt(obj) end
+    end
+end
+
+local function RunClaimDaily()
+    if not Config.ClaimDaily_Enabled then return end
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        local nm = obj.Name:lower()
+        if nm:find("daily") or nm:find("gift") or nm:find("reward") then
+            FirePrompt(obj)
+        end
+    end
+end
+
+local function RunAutoEvent()
+    if not Config.AutoEvent_Enabled then return end
+    local myHRP = GetMyHRP()
+    if not myHRP then return end
+
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        local nm = obj.Name:lower()
+        for _, kw in ipairs(EventKeywords) do
+            if nm:find(kw) then
+                if obj:IsA("BasePart") then
+                    pcall(function() myHRP.CFrame = CFrame.new(obj.Position + Vector3.new(0, 8, 0)) end)
+                end
+                FirePrompt(obj)
+                break
+            end
+        end
+    end
+end
+
+local function RunAutoRift()
+    if not Config.AutoRift_Enabled then return end
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        local nm = obj.Name:lower()
+        if nm:find("rift") or nm:find("portal") or nm:find("dimension") then
+            FirePrompt(obj)
+        end
+    end
+end
+
+local function RunAutoMerged()
+    if not Config.AutoMerged_Enabled then return end
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        local nm = obj.Name:lower()
+        if nm:find("merged") or (nm:find("angel") and nm:find("demon")) then
+            FirePrompt(obj)
+        end
+    end
+end
+
+-- ============================================================
+-- DEFENSE
+-- ============================================================
+local function RunGodMode()
+    if not Config.GodMode_Enabled then return end
+    local c, hrp, hum = GetChar(LP)
+    if not c then return end
+    pcall(function()
+        if hum.Health < Config.GodMode_LockHP then hum.Health = Config.GodMode_LockHP end
+        if hum.MaxHealth < Config.GodMode_LockHP then hum.MaxHealth = Config.GodMode_LockHP end
+        hum.BreakJointsOnDeath = false
+    end)
+end
+
+local function RunAntiGuardian()
+    if not Config.AntiGuardian_Enabled then return end
+    local c = LP.Character
+    if not c then return end
+    local hrp = c:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    -- Teleport guardian away / disable
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("Humanoid") and obj.Parent ~= c then
+            local nm = obj.Parent.Name:lower()
+            if nm:find("guardian") or nm:find("monster") or nm:find("guard") then
+                pcall(function() obj.Health = 0 end)
+            end
+        end
+    end
+end
+
+local function RunAntiSteal()
+    if not Config.AntiSteal_Enabled then return end
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and IsEgg(obj) then
+            local owner = obj:GetAttribute("Owner") or obj:GetAttribute("Player") or obj:GetAttribute("UserId")
+            if owner and tostring(owner) == tostring(LP.UserId) then
+                pcall(function() obj.Anchored = true end)
+            end
+        end
+    end
+end
+
+-- ============================================================
+-- KILL AURA (Premium)
+-- ============================================================
+local function RunKillAura()
+    if not Config.KillAura_Enabled then return end
+    if not IsPremiumOnly("Kill Aura") then Config.KillAura_Enabled = false; return end
+    local c, hrp, hum = GetChar(LP)
+    if not c or not hrp then return end
+
+    local tool = c:FindFirstChildOfClass("Tool")
+    if not tool then return end
+
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("Humanoid") and obj.Parent ~= c and obj.Health > 0 then
+            local ehrp = obj.Parent:FindFirstChild("HumanoidRootPart")
+            if ehrp then
+                if (ehrp.Position - hrp.Position).Magnitude <= Config.KillAura_Range then
+                    pcall(function() tool:Activate() end)
+                end
+            end
+        end
+    end
+end
+
+-- ============================================================
+-- ESP
+-- ============================================================
+local function newLine()
+    local l = Drawing.new("Line")
+    l.Thickness = 1.5; l.Transparency = 1; l.Visible = false
+    return l
+end
+
+-- Player ESP
+local function CreatePlayerESP(plr)
+    if State.ESP[plr] then return State.ESP[plr] end
+    local e = {
+        Top = newLine(), Bottom = newLine(), Left = newLine(), Right = newLine(),
+        Name = Drawing.new("Text"), HP = Drawing.new("Text"), Dist = Drawing.new("Text"),
+        Antena = newLine(),
+    }
+    e.Name.Size = 13; e.Name.Center = true; e.Name.Outline = true
+    e.HP.Size = 11;   e.HP.Center = true;   e.HP.Outline = true
+    e.Dist.Size = 11; e.Dist.Center = true; e.Dist.Outline = true
+    State.ESP[plr] = e
+    return e
+end
+
+local function RemovePlayerESP(plr)
+    local e = State.ESP[plr]
+    if not e then return end
+    for _, o in pairs(e) do pcall(function() o:Remove() end) end
+    State.ESP[plr] = nil
+end
+
+local function HidePlayerESP(e)
+    e.Top.Visible, e.Bottom.Visible, e.Left.Visible, e.Right.Visible = false, false, false, false
+    e.Name.Visible, e.HP.Visible, e.Dist.Visible = false, false, false
+    e.Antena.Visible = false
+end
+
+local function SetLine(l, a, b, col)
+    l.From = a; l.To = b; l.Color = col; l.Visible = true
+end
+
+local function UpdatePlayerESP()
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr == LP then continue end
+        local e = State.ESP[plr]
+        if not e then
+            if Config.ESP_Player_Enabled or Config.ESP_Antena_Enabled then
+                e = CreatePlayerESP(plr)
+            else continue end
+        end
+        if not Config.ESP_Player_Enabled and not Config.ESP_Antena_Enabled then
+            HidePlayerESP(e); continue
+        end
+
+        local c, hrp, hum = GetChar(plr)
+        if not c then HidePlayerESP(e); continue end
+        local head = c:FindFirstChild("Head")
+        if not head then HidePlayerESP(e); continue end
+
+        local topPos = head.Position + Vector3.new(0, 0.6, 0)
+        local botPos = hrp.Position - Vector3.new(0, 3, 0)
+        local topS = W2S(topPos)
+        local botS = W2S(botPos)
+        if not (topS and botS) then HidePlayerESP(e); continue end
+
+        local height = math.abs(botS.Y - topS.Y)
+        local width = height * 0.55
+        local cx = topS.X
+        local topX = cx - width * 0.5
+
+        local tl = Vector2.new(topX, topS.Y)
+        local tr = Vector2.new(topX + width, topS.Y)
+        local bl = Vector2.new(topX, botS.Y)
+        local br = Vector2.new(topX + width, botS.Y)
+        local col = Color3.fromRGB(255, 80, 80)
+
+        if Config.ESP_Player_Enabled then
+            SetLine(e.Top, tl, tr, col); SetLine(e.Bottom, bl, br, col)
+            SetLine(e.Left, tl, bl, col); SetLine(e.Right, tr, br, col)
+            if Config.ESP_Player_Name then
+                e.Name.Text = plr.Name
+                e.Name.Position = Vector2.new(cx, tl.Y - 16)
+                e.Name.Color = Color3.fromRGB(255, 255, 255)
+                e.Name.Visible = true
+            else e.Name.Visible = false end
+            if Config.ESP_Player_HP then
+                local hp = math.floor(hum.Health)
+                local maxhp = math.floor(math.max(hum.MaxHealth, 1))
+                local ratio = hp / maxhp
+                e.HP.Text = tostring(hp) .. "/" .. tostring(maxhp)
+                e.HP.Position = Vector2.new(cx, br.Y + 2)
+                e.HP.Color = Color3.fromRGB(math.floor(255 * (1 - ratio)), math.floor(255 * ratio), 0)
+                e.HP.Visible = true
+            else e.HP.Visible = false end
+            if Config.ESP_Player_Dist then
+                local d = (Camera.CFrame.Position - hrp.Position).Magnitude
+                e.Dist.Text = tostring(math.floor(d)) .. "m"
+                e.Dist.Position = Vector2.new(cx, br.Y + 16)
+                e.Dist.Color = Color3.fromRGB(200, 200, 200)
+                e.Dist.Visible = true
+            else e.Dist.Visible = false end
+        else
+            e.Top.Visible, e.Bottom.Visible, e.Left.Visible, e.Right.Visible = false, false, false, false
+            e.Name.Visible, e.HP.Visible, e.Dist.Visible = false, false, false
+        end
+
+        if Config.ESP_Antena_Enabled then
+            SetLine(e.Antena, Vector2.new(cx, tl.Y), Vector2.new(cx, tl.Y - Config.ESP_Antena_Height), col)
+            e.Antena.Thickness = Config.ESP_Antena_Thickness
+        else
+            e.Antena.Visible = false
+        end
+    end
+end
+
+-- Egg ESP
+local function UpdateEggESP()
+    if not Config.ESP_Egg_Enabled then
+        for _, tag in pairs(State.EggESP) do pcall(function() tag:Remove() end) end
+        State.EggESP = {}
+        return
+    end
+
+    local myHRP = GetMyHRP()
+    if not myHRP then return end
+
+    local seen = {}
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and IsEgg(obj) then
+            local d = (obj.Position - myHRP.Position).Magnitude
+            if d <= Config.ESP_Egg_MaxDist then
+                seen[obj] = true
+                local tag = State.EggESP[obj]
+                if not tag then
+                    tag = Drawing.new("Text")
+                    tag.Size = 12
+                    tag.Center = true
+                    tag.Outline = true
+                    State.EggESP[obj] = tag
+                end
+                local sp = W2S(obj.Position)
+                if sp then
+                    local tier = GetEggTier(obj)
+                    local parts = {}
+                    if Config.ESP_Egg_ShowName then table.insert(parts, obj.Name) end
+                    if Config.ESP_Egg_ShowTier then table.insert(parts, "[" .. tier .. "]") end
+                    if Config.ESP_Egg_ShowDist then table.insert(parts, math.floor(d) .. "m") end
+                    tag.Text = table.concat(parts, " ")
+                    tag.Color = TierColor3(tier)
+                    tag.Position = sp
+                    tag.Visible = true
+                else
+                    tag.Visible = false
+                end
+            end
+        end
+    end
+    for obj, tag in pairs(State.EggESP) do
+        if not seen[obj] or not obj.Parent then
+            pcall(function() tag:Remove() end)
+            State.EggESP[obj] = nil
+        end
+    end
+end
+
+-- Base ESP
+local function UpdateBaseESP()
+    if not Config.ESP_Base_Enabled then
+        for _, tag in pairs(State.BaseESP) do pcall(function() tag:Remove() end) end
+        State.BaseESP = {}
+        return
+    end
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        local c, hrp = GetChar(plr)
+        if c then
+            for _, obj in ipairs(workspace:GetDescendants()) do
+                if obj:IsA("BasePart") and IsBase(obj) then
+                    local owner = obj:GetAttribute("Owner") or obj:GetAttribute("Player") or obj:GetAttribute("UserId")
+                    if owner and tostring(owner) == tostring(plr.UserId) then
+                        local tag = State.BaseESP[obj]
+                        if not tag then
+                            tag = Drawing.new("Text")
+                            tag.Size = 12
+                            tag.Center = true
+                            tag.Outline = true
+                            tag.Color = Color3.fromRGB(255, 200, 50)
+                            State.BaseESP[obj] = tag
+                        end
+                        local sp = W2S(obj.Position + Vector3.new(0, 5, 0))
+                        if sp then
+                            local d = (Camera.CFrame.Position - obj.Position).Magnitude
+                            tag.Text = plr.Name .. "'s Base [" .. math.floor(d) .. "m]"
+                            tag.Position = sp
+                            tag.Visible = true
+                        end
+                        break
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- Biome ESP
+local function UpdateBiomeESP()
+    if not Config.ESP_Biome_Enabled then
+        for _, tag in pairs(State.BiomeESP) do pcall(function() tag:Remove() end) end
+        State.BiomeESP = {}
+        return
+    end
+
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") or obj:IsA("Model") then
+            local nm = obj.Name:lower()
+            for _, bio in ipairs(BiomeList) do
+                if nm:find(bio:lower()) then
+                    local pos = obj:IsA("BasePart") and obj.Position or (obj:FindFirstChild("HumanoidRootPart") and obj.HumanoidRootPart.Position)
+                    if pos then
+                        local tag = State.BiomeESP[obj]
+                        if not tag then
+                            tag = Drawing.new("Text")
+                            tag.Size = 12
+                            tag.Center = true
+                            tag.Outline = true
+                            tag.Color = Color3.fromRGB(100, 255, 255)
+                            State.BiomeESP[obj] = tag
+                        end
+                        local sp = W2S(pos)
+                        if sp then
+                            local d = (Camera.CFrame.Position - pos).Magnitude
+                            tag.Text = bio .. " [" .. math.floor(d) .. "m]"
+                            tag.Position = sp
+                            tag.Visible = true
+                        end
+                    end
+                    break
+                end
+            end
+        end
+    end
+end
+
+-- Event ESP
+local function UpdateEventESP()
+    if not Config.ESP_Event_Enabled then
+        for _, tag in pairs(State.EventESP) do pcall(function() tag:Remove() end) end
+        State.EventESP = {}
+        return
+    end
+
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") or obj:IsA("Model") then
+            local nm = obj.Name:lower()
+            for _, kw in ipairs(EventKeywords) do
+                if nm:find(kw) then
+                    local pos = obj:IsA("BasePart") and obj.Position or (obj:FindFirstChild("HumanoidRootPart") and obj.HumanoidRootPart.Position)
+                    if pos then
+                        local tag = State.EventESP[obj]
+                        if not tag then
+                            tag = Drawing.new("Text")
+                            tag.Size = 13
+                            tag.Center = true
+                            tag.Outline = true
+                            tag.Color = Color3.fromRGB(255, 100, 255)
+                            State.EventESP[obj] = tag
+                        end
+                        local sp = W2S(pos)
+                        if sp then
+                            local d = (Camera.CFrame.Position - pos).Magnitude
+                            tag.Text = "[EVENT] " .. obj.Name .. " [" .. math.floor(d) .. "m]"
+                            tag.Position = sp
+                            tag.Visible = true
+                        end
+                    end
+                    break
+                end
+            end
+        end
+    end
+end
+
+-- ============================================================
+-- TELEPORT
+-- ============================================================
+local function TeleportToEgg()
+    local myHRP = GetMyHRP()
+    if not myHRP then return end
+    local closest, cd = nil, math.huge
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and IsEgg(obj) then
+            local d = (obj.Position - myHRP.Position).Magnitude
+            if d < cd then cd = d; closest = obj end
+        end
+    end
+    if closest then
+        pcall(function() myHRP.CFrame = CFrame.new(closest.Position + Vector3.new(0, 5, 0)) end)
+        Notify("Teleport", "Ke " .. closest.Name)
+    else
+        Notify("Teleport", "Gak ada egg")
+    end
+end
+
+local function TeleportToBase()
+    local myHRP = GetMyHRP()
+    if not myHRP then return end
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and IsBase(obj) then
+            local owner = obj:GetAttribute("Owner") or obj:GetAttribute("Player") or obj:GetAttribute("UserId")
+            if owner and tostring(owner) == tostring(LP.UserId) then
+                pcall(function() myHRP.CFrame = CFrame.new(obj.Position + Vector3.new(0, 5, 0)) end)
+                Notify("Teleport", "Ke Base")
+                return
+            end
+        end
+    end
+    Notify("Teleport", "Base gak ketemu")
+end
+
+local function TeleportToPlayer(targetName)
+    local myHRP = GetMyHRP()
+    if not myHRP then return end
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr.Name == targetName then
+            local c, hrp = GetChar(plr)
+            if hrp then
+                pcall(function() myHRP.CFrame = CFrame.new(hrp.Position + Vector3.new(0, 5, 0)) end)
+                Notify("Teleport", "Ke " .. targetName)
+                return
+            end
+        end
+    end
+    Notify("Teleport", "Player gak ketemu")
+end
+
+-- ============================================================
+-- MOVEMENT
+-- ============================================================
+local function RunSpeed()
+    local c = LP.Character
+    if not c then
+        if State.SpeedBV then State.SpeedBV:Destroy(); State.SpeedBV = nil end
+        return
+    end
+    local hrp = c:FindFirstChild("HumanoidRootPart")
+    if not hrp then
+        if State.SpeedBV then State.SpeedBV:Destroy(); State.SpeedBV = nil end
+        return
+    end
+    if not Config.Speed_Enabled and not Config.StealFly_Enabled then
+        if State.SpeedBV then State.SpeedBV:Destroy(); State.SpeedBV = nil end
+        return
+    end
+
+    if not State.SpeedBV or State.SpeedBV.Parent ~= hrp then
+        if State.SpeedBV then State.SpeedBV:Destroy() end
+        State.SpeedBV = Instance.new("BodyVelocity")
+        State.SpeedBV.MaxForce = Vector3.new(1e5, 0, 1e5)
+        State.SpeedBV.P = 1e4
+        State.SpeedBV.Parent = hrp
+    end
+
+    local hum = c:FindFirstChildOfClass("Humanoid")
+    if hum then
+        local md = hum.MoveDirection
+        local speed = Config.StealFly_Enabled and Config.StealFly_Speed or Config.Speed_Value
+        if md.Magnitude > 0 then
+            State.SpeedBV.Velocity = Vector3.new(md.X * speed, 0, md.Z * speed)
+        else
+            State.SpeedBV.Velocity = Vector3.new(0, 0, 0)
+        end
+    end
+end
+
+local function SetupInfJump()
+    local conn = UIS.JumpRequest:Connect(function()
+        if not Config.InfJump_Enabled then return end
+        local c = LP.Character
+        if not c then return end
+        local hum = c:FindFirstChildOfClass("Humanoid")
+        if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+    end)
+    table.insert(State.Conns, conn)
+end
+
+local function StartFly()
+    local c = LP.Character
+    if not c then return end
+    local hrp = c:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    if State.FlyBV then State.FlyBV:Destroy() end
+    if State.FlyBG then State.FlyBG:Destroy() end
+
+    local bv = Instance.new("BodyVelocity")
+    bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+    bv.Velocity = Vector3.new(0, 0, 0)
+    bv.Parent = hrp
+    State.FlyBV = bv
+
+    local bg = Instance.new("BodyGyro")
+    bg.MaxTorque = Vector3.new(1e9, 1e9, 1e9)
+    bg.P, bg.D = 1000, 50
+    bg.CFrame = hrp.CFrame
+    bg.Parent = hrp
+    State.FlyBG = bg
+end
+
+local function StopFly()
+    if State.FlyBV then State.FlyBV:Destroy(); State.FlyBV = nil end
+    if State.FlyBG then State.FlyBG:Destroy(); State.FlyBG = nil end
+end
+
+local function UpdateFly()
+    if not Config.Fly_Enabled then
+        if State.FlyBV then StopFly() end
+        return
+    end
+    if not State.FlyBV then StartFly() end
+
+    local c = LP.Character
+    if not c then return end
+    local hrp = c:FindFirstChild("HumanoidRootPart")
+    if not hrp or not State.FlyBV or not State.FlyBG then return end
+
+    local dir = Vector3.new(0, 0, 0)
+    if UIS:IsKeyDown(Enum.KeyCode.W) then dir = dir + Camera.CFrame.LookVector end
+    if UIS:IsKeyDown(Enum.KeyCode.S) then dir = dir - Camera.CFrame.LookVector end
+    if UIS:IsKeyDown(Enum.KeyCode.A) then dir = dir - Camera.CFrame.RightVector end
+    if UIS:IsKeyDown(Enum.KeyCode.D) then dir = dir + Camera.CFrame.RightVector end
+    if UIS:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.new(0, 1, 0) end
+    if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then dir = dir - Vector3.new(0, 1, 0) end
+
+    State.FlyBV.Velocity = dir * Config.Fly_Speed
+    State.FlyBG.CFrame = Camera.CFrame
+end
+
+local function RunNoClip()
+    if not Config.NoClip_Enabled then return end
+    local c = LP.Character
+    if not c then return end
+    for _, part in ipairs(c:GetDescendants()) do
+        if part:IsA("BasePart") then part.CanCollide = false end
+    end
+end
+
+-- ============================================================
+-- MISC
+-- ============================================================
+local function ApplyFullBright()
+    if Config.FullBright_Enabled then
+        Lighting.Ambient = Color3.fromRGB(255,255,255)
+        Lighting.OutdoorAmbient = Color3.fromRGB(255,255,255)
+        Lighting.Brightness = 3
+        Lighting.FogEnd = 1e6
+        Lighting.GlobalShadows = false
+    else
+        Lighting.Ambient = State.OrigLight.Ambient
+        Lighting.OutdoorAmbient = State.OrigLight.OutdoorAmbient
+        Lighting.Brightness = State.OrigLight.Brightness
+        Lighting.FogEnd = State.OrigLight.FogEnd
+        Lighting.GlobalShadows = State.OrigLight.GlobalShadows
+    end
+end
+
+local function SetupAntiAFK()
+    local conn = LP.Idled:Connect(function()
+        if not Config.AntiAFK_Enabled then return end
+        pcall(function()
+            VirtualUser:CaptureController()
+            VirtualUser:ClickButton2(Vector2.new())
+        end)
+    end)
+    table.insert(State.Conns, conn)
+end
+
+local function ServerHop()
+    local url = string.format("https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100", game.PlaceId)
+    local ok, res = pcall(function() return game:HttpGet(url) end)
+    if not ok then return end
+    local data = HttpService:JSONDecode(res)
+    for _, srv in ipairs(data.data or {}) do
+        if srv.playing and srv.playing < srv.maxPlayers and srv.id ~= game.JobId then
+            pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId, srv.id, LP) end)
+            return
+        end
+    end
+end
+
+local function CreateWatermark()
+    local wm = Drawing.new("Text")
+    wm.Text = Config.IsPremium and "Steal An Egg v2.0 | PREMIUM | joy" or "Steal An Egg v2.0 | BASIC"
+    wm.Size = 14
+    wm.Color = Config.IsPremium and Color3.fromRGB(255, 215, 0) or Color3.fromRGB(255, 255, 255)
+    wm.Outline = true
+    wm.Position = Vector2.new(14, 14)
+    wm.Visible = true
+    State.Watermark = wm
+end
+
+-- ============================================================
+-- CUSTOM UI
+-- ============================================================
+local function CreateUI()
+    if State.UI.ScreenGui then State.UI.ScreenGui:Destroy() end
+
+    local parent = (gethui and gethui()) or CoreGui
+    local sg = Instance.new("ScreenGui")
+    sg.Name = "StealAnEggUI_" .. tostring(math.random(100000, 999999))
+    sg.ResetOnSpawn = false
+    sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    sg.Parent = parent
+    State.UI.ScreenGui = sg
+
+    -- Tema
+    local theme = {
+        bg = Color3.fromRGB(15, 15, 20),
+        bg2 = Color3.fromRGB(22, 22, 30),
+        bg3 = Color3.fromRGB(30, 30, 42),
+        accent = Color3.fromRGB(255, 80, 120),
+        accent2 = Color3.fromRGB(120, 80, 255),
+        text = Color3.fromRGB(240, 240, 240),
+        textDim = Color3.fromRGB(160, 160, 170),
+        premium = Color3.fromRGB(255, 200, 50),
+        basic = Color3.fromRGB(80, 200, 255),
+        toggleOn = Color3.fromRGB(0, 200, 100),
+        toggleOff = Color3.fromRGB(60, 60, 70),
+    }
+    State.UI.Theme = theme
+
+    -- === KEY SCREEN ===
+    local keyFrame = Instance.new("Frame")
+    keyFrame.Size = UDim2.new(0, 380, 0, 240)
+    keyFrame.Position = UDim2.new(0.5, -190, 0.5, -120)
+    keyFrame.BackgroundColor3 = theme.bg
+    keyFrame.BorderSizePixel = 0
+    keyFrame.Visible = true
+    keyFrame.Parent = sg
+    Instance.new("UICorner", keyFrame).CornerRadius = UDim.new(0, 12)
+    local kStroke = Instance.new("UIStroke", keyFrame)
+    kStroke.Color = theme.accent
+    kStroke.Thickness = 2
+
+    local kTitle = Instance.new("TextLabel")
+    kTitle.Size = UDim2.new(1, 0, 0, 45)
+    kTitle.BackgroundTransparency = 1
+    kTitle.Text = "Steal An Egg v2.0"
+    kTitle.TextColor3 = theme.accent
+    kTitle.Font = Enum.Font.GothamBold
+    kTitle.TextSize = 22
+    kTitle.Parent = keyFrame
+
+    local kSub = Instance.new("TextLabel")
+    kSub.Size = UDim2.new(1, 0, 0, 20)
+    kSub.Position = UDim2.new(0, 0, 0, 42)
+    kSub.BackgroundTransparency = 1
+    kSub.Text = "Masukkan Key Premium (ketik: Joy)"
+    kSub.TextColor3 = theme.textDim
+    kSub.Font = Enum.Font.Gotham
+    kSub.TextSize = 13
+    kSub.Parent = keyFrame
+
+    local kBasicInfo = Instance.new("TextLabel")
+    kBasicInfo.Size = UDim2.new(1, -40, 0, 40)
+    kBasicInfo.Position = UDim2.new(0, 20, 0, 75)
+    kBasicInfo.BackgroundTransparency = 1
+    kBasicInfo.Text = "Kosong = Basic (free)\nJoy = Premium (semua fitur)"
+    kBasicInfo.TextColor3 = theme.text
+    kBasicInfo.Font = Enum.Font.Gotham
+    kBasicInfo.TextSize = 13
+    kBasicInfo.TextWrapped = true
+    kBasicInfo.Parent = keyFrame
+
+    local kBox = Instance.new("TextBox")
+    kBox.Size = UDim2.new(1, -40, 0, 38)
+    kBox.Position = UDim2.new(0, 20, 0, 125)
+    kBox.BackgroundColor3 = theme.bg3
+    kBox.BorderSizePixel = 0
+    kBox.Text = ""
+    kBox.PlaceholderText = "Ketik key..."
+    kBox.TextColor3 = theme.text
+    kBox.PlaceholderColor3 = theme.textDim
+    kBox.Font = Enum.Font.Gotham
+    kBox.TextSize = 14
+    kBox.Parent = keyFrame
+    Instance.new("UICorner", kBox).CornerRadius = UDim.new(0, 6)
+
+    local kBtn = Instance.new("TextButton")
+    kBtn.Size = UDim2.new(1, -40, 0, 40)
+    kBtn.Position = UDim2.new(0, 20, 1, -55)
+    kBtn.BackgroundColor3 = theme.accent
+    kBtn.BorderSizePixel = 0
+    kBtn.Text = "UNLOCK"
+    kBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    kBtn.Font = Enum.Font.GothamBold
+    kBtn.TextSize = 15
+    kBtn.Parent = keyFrame
+    Instance.new("UICorner", kBtn).CornerRadius = UDim.new(0, 8)
+
+    kBtn.MouseButton1Click:Connect(function()
+        local key = kBox.Text
+        if key == "" then
+            Config.IsPremium = false
+            Notify("Basic Mode", "Basic unlocked. Fitur premium terkunci.")
+        elseif key == "Joy" then
+            Config.IsPremium = true
+            Notify("Premium Mode", "Premium unlocked! Semua fitur terbuka.")
+        else
+            Config.IsPremium = false
+            Notify("Invalid Key", "Key salah. masuk mode Basic.")
+        end
+        keyFrame.Visible = false
+        State.UI.Main.Visible = true
+        if State.Watermark then
+            State.Watermark.Text = Config.IsPremium and "Steal An Egg v2.0 | PREMIUM | joy" or "Steal An Egg v2.0 | BASIC"
+            State.Watermark.Color = Config.IsPremium and Color3.fromRGB(255, 215, 0) or Color3.fromRGB(255, 255, 255)
+        end
+        -- Refresh UI label
+        if State.UI.RefreshGate then State.UI.RefreshGate() end
+    end)
+
+    -- === MAIN WINDOW ===
+    local main = Instance.new("Frame")
+    main.Size = UDim2.new(0, 620, 0, 420)
+    main.Position = UDim2.new(0.5, -310, 0.5, -210)
+    main.BackgroundColor3 = theme.bg
+    main.BorderSizePixel = 0
+    main.Visible = false
+    main.Parent = sg
+    Instance.new("UICorner", main).CornerRadius = UDim.new(0, 12)
+    local mStroke = Instance.new("UIStroke", main)
+    mStroke.Color = theme.accent
+    mStroke.Thickness = 1.5
+    State.UI.Main = main
+
+    -- Title bar
+    local titleBar = Instance.new("Frame")
+    titleBar.Size = UDim2.new(1, 0, 0, 36)
+    titleBar.BackgroundColor3 = theme.bg2
+    titleBar.BorderSizePixel = 0
+    titleBar.Parent = main
+    Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 12)
+
+    local titleLbl = Instance.new("TextLabel")
+    titleLbl.Size = UDim2.new(1, -80, 1, 0)
+    titleLbl.Position = UDim2.new(0, 14, 0, 0)
+    titleLbl.BackgroundTransparency = 1
+    titleLbl.Text = "Steal An Egg v2.0 | joy"
+    titleLbl.TextColor3 = theme.accent
+    titleLbl.Font = Enum.Font.GothamBold
+    titleLbl.TextSize = 15
+    titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+    titleLbl.Parent = titleBar
+
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 28, 0, 28)
+    closeBtn.Position = UDim2.new(1, -34, 0, 4)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+    closeBtn.BorderSizePixel = 0
+    closeBtn.Text = "×"
+    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.TextSize = 18
+    closeBtn.Parent = titleBar
+    Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
+    closeBtn.MouseButton1Click:Connect(function()
+        main.Visible = false
+    end)
+
+    -- Tab bar (kiri)
+    local tabBar = Instance.new("Frame")
+    tabBar.Size = UDim2.new(0, 130, 1, -36)
+    tabBar.Position = UDim2.new(0, 0, 0, 36)
+    tabBar.BackgroundColor3 = theme.bg2
+    tabBar.BorderSizePixel = 0
+    tabBar.Parent = main
+
+    -- Content area
+    local content = Instance.new("ScrollingFrame")
+    content.Size = UDim2.new(1, -140, 1, -46)
+    content.Position = UDim2.new(0, 130, 0, 36)
+    content.BackgroundColor3 = theme.bg
+    content.BorderSizePixel = 0
+    content.ScrollBarThickness = 4
+    content.ScrollBarImageColor3 = theme.accent
+    content.CanvasSize = UDim2.new(0, 0, 0, 0)
+    content.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    content.Parent = main
+    State.UI.Content = content
+
+    -- Drag main window
+    local dragging, dragStart, startPos
+    titleBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = main.Position
+        end
+    end)
+    titleBar.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+    UIS.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+
+    -- Helper: Tab button
+    local function CreateTabButton(name, order)
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, 0, 0, 38)
+        btn.Position = UDim2.new(0, 0, 0, (order - 1) * 40 + 6)
+        btn.BackgroundColor3 = theme.bg2
+        btn.BorderSizePixel = 0
+        btn.Text = "  " .. name
+        btn.TextColor3 = theme.text
+        btn.Font = Enum.Font.Gotham
+        btn.TextSize = 13
+        btn.TextXAlignment = Enum.TextXAlignment.Left
+        btn.Parent = tabBar
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+        return btn
+    end
+
+    -- Helper: Section
+    local function CreateSection(parent, title)
+        local sec = Instance.new("Frame")
+        sec.Size = UDim2.new(1, -20, 0, 30)
+        sec.BackgroundTransparency = 1
+        sec.Parent = parent
+
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(1, 0, 1, 0)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = "◆ " .. title
+        lbl.TextColor3 = theme.accent
+        lbl.Font = Enum.Font.GothamBold
+        lbl.TextSize = 14
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.Parent = sec
+
+        local line = Instance.new("Frame")
+        line.Size = UDim2.new(1, 0, 0, 1)
+        line.Position = UDim2.new(0, 0, 1, -1)
+        line.BackgroundColor3 = theme.accent
+        line.BackgroundTransparency = 0.6
+        line.BorderSizePixel = 0
+        line.Parent = sec
+
+        return sec
+    end
+
+    -- Helper: Toggle (dengan gate premium)
+    local function CreateToggle(parent, name, flag, default, callback, isPremium, getValue)
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, -20, 0, 34)
+        row.BackgroundColor3 = theme.bg2
+        row.BorderSizePixel = 0
+        row.Parent = parent
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(1, -80, 1, 0)
+        lbl.Position = UDim2.new(0, 12, 0, 0)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = (isPremium and "[P] " or "") .. name
+        lbl.TextColor3 = isPremium and theme.premium or theme.text
+        lbl.Font = Enum.Font.Gotham
+        lbl.TextSize = 13
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.Parent = row
+
+        local state = { value = getValue and getValue() or default }
+
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(0, 44, 0, 22)
+        btn.Position = UDim2.new(1, -54, 0.5, -11)
+        btn.BackgroundColor3 = state.value and theme.toggleOn or theme.toggleOff
+        btn.BorderSizePixel = 0
+        btn.Text = ""
+        btn.Parent = row
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(1, 0)
+
+        local knob = Instance.new("Frame")
+        knob.Size = UDim2.new(0, 18, 0, 18)
+        knob.Position = state.value and UDim2.new(1, -20, 0.5, -9) or UDim2.new(0, 2, 0.5, -9)
+        knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        knob.BorderSizePixel = 0
+        knob.Parent = btn
+        Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+
+        local function updateVisual(v)
+            TweenService:Create(btn, TweenInfo.new(0.15), { BackgroundColor3 = v and theme.toggleOn or theme.toggleOff }):Play()
+            TweenService:Create(knob, TweenInfo.new(0.15), { Position = v and UDim2.new(1, -20, 0.5, -9) or UDim2.new(0, 2, 0.5, -9) }):Play()
+        end
+
+        btn.MouseButton1Click:Connect(function()
+            if isPremium and not Config.IsPremium then
+                Notify("Premium Only", name .. " butuh key Premium 'Joy'")
+                return
+            end
+            state.value = not state.value
+            updateVisual(state.value)
+            callback(state.value)
+        end)
+
+        return row
+    end
+
+    -- Helper: Slider
+    local function CreateSlider(parent, name, min, max, default, suffix, flag, callback, isPremium)
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, -20, 0, 46)
+        row.BackgroundColor3 = theme.bg2
+        row.BorderSizePixel = 0
+        row.Parent = parent
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(1, -20, 0, 20)
+        lbl.Position = UDim2.new(0, 12, 0, 2)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = (isPremium and "[P] " or "") .. name .. "  [" .. tostring(default) .. (suffix or "") .. "]"
+        lbl.TextColor3 = isPremium and theme.premium or theme.text
+        lbl.Font = Enum.Font.Gotham
+        lbl.TextSize = 12
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.Parent = row
+
+        local bar = Instance.new("Frame")
+        bar.Size = UDim2.new(1, -24, 0, 6)
+        bar.Position = UDim2.new(0, 12, 0, 28)
+        bar.BackgroundColor3 = theme.bg3
+        bar.BorderSizePixel = 0
+        bar.Parent = row
+        Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
+
+        local fill = Instance.new("Frame")
+        fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+        fill.BackgroundColor3 = isPremium and theme.premium or theme.accent
+        fill.BorderSizePixel = 0
+        fill.Parent = bar
+        Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+
+        local knob = Instance.new("Frame")
+        knob.Size = UDim2.new(0, 14, 0, 14)
+        knob.Position = UDim2.new((default - min) / (max - min), -7, 0.5, -7)
+        knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        knob.BorderSizePixel = 0
+        knob.Parent = bar
+        Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+
+        local dragging = false
+        local function updateFromMouse(x)
+            local rel = math.clamp((x - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+            local val = math.floor(min + (max - min) * rel)
+            fill.Size = UDim2.new(rel, 0, 1, 0)
+            knob.Position = UDim2.new(rel, -7, 0.5, -7)
+            lbl.Text = (isPremium and "[P] " or "") .. name .. "  [" .. tostring(val) .. (suffix or "") .. "]"
+            callback(val)
+        end
+
+        bar.InputBegan:Connect(function(input)
+            if isPremium and not Config.IsPremium then
+                Notify("Premium Only", name .. " butuh key Premium 'Joy'")
+                return
+            end
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = true
+                updateFromMouse(input.Position.X)
+            end
+        end)
+        UIS.InputChanged:Connect(function(input)
+            if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+                updateFromMouse(input.Position.X)
+            end
+        end)
+        UIS.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = false
+            end
+        end)
+
+        return row
+    end
+
+    -- Helper: Dropdown
+    local function CreateDropdown(parent, name, options, default, flag, callback, isPremium)
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, -20, 0, 34)
+        row.BackgroundColor3 = theme.bg2
+        row.BorderSizePixel = 0
+        row.Parent = parent
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(0, 200, 1, 0)
+        lbl.Position = UDim2.new(0, 12, 0, 0)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = (isPremium and "[P] " or "") .. name
+        lbl.TextColor3 = isPremium and theme.premium or theme.text
+        lbl.Font = Enum.Font.Gotham
+        lbl.TextSize = 13
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.Parent = row
+
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(0, 140, 0, 24)
+        btn.Position = UDim2.new(1, -150, 0.5, -12)
+        btn.BackgroundColor3 = theme.bg3
+        btn.BorderSizePixel = 0
+        btn.Text = default
+        btn.TextColor3 = theme.text
+        btn.Font = Enum.Font.Gotham
+        btn.TextSize = 12
+        btn.Parent = row
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+
+        local menu = Instance.new("Frame")
+        menu.Size = UDim2.new(0, 140, 0, math.min(#options * 24 + 8, 200))
+        menu.Position = UDim2.new(1, -150, 1, 4)
+        menu.BackgroundColor3 = theme.bg3
+        menu.BorderSizePixel = 0
+        menu.Visible = false
+        menu.ZIndex = 10
+        menu.Parent = row
+        Instance.new("UICorner", menu).CornerRadius = UDim.new(0, 6)
+
+        local menuList = Instance.new("ScrollingFrame")
+        menuList.Size = UDim2.new(1, -8, 1, -8)
+        menuList.Position = UDim2.new(0, 4, 0, 4)
+        menuList.BackgroundTransparency = 1
+        menuList.BorderSizePixel = 0
+        menuList.ScrollBarThickness = 3
+        menuList.CanvasSize = UDim2.new(0, 0, 0, #options * 24)
+        menuList.Parent = menu
+
+        for i, opt in ipairs(options) do
+            local ob = Instance.new("TextButton")
+            ob.Size = UDim2.new(1, 0, 0, 22)
+            ob.Position = UDim2.new(0, 0, 0, (i - 1) * 24)
+            ob.BackgroundTransparency = 1
+            ob.Text = opt
+            ob.TextColor3 = theme.text
+            ob.Font = Enum.Font.Gotham
+            ob.TextSize = 12
+            ob.ZIndex = 11
+            ob.Parent = menuList
+            ob.MouseButton1Click:Connect(function()
+                btn.Text = opt
+                menu.Visible = false
+                callback(opt)
+            end)
+        end
+
+        btn.MouseButton1Click:Connect(function()
+            if isPremium and not Config.IsPremium then
+                Notify("Premium Only", name .. " butuh key Premium 'Joy'")
+                return
+            end
+            menu.Visible = not menu.Visible
+        end)
+
+        return row
+    end
+
+    -- Helper: Button
+    local function CreateButton(parent, name, callback, isPremium)
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, -20, 0, 34)
+        btn.BackgroundColor3 = isPremium and theme.premium or theme.accent
+        btn.BorderSizePixel = 0
+        btn.Text = (isPremium and "[P] " or "") .. name
+        btn.TextColor3 = isPremium and Color3.fromRGB(30, 20, 0) or Color3.fromRGB(255, 255, 255)
+        btn.Font = Enum.Font.GothamBold
+        btn.TextSize = 13
+        btn.Parent = parent
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+        btn.MouseButton1Click:Connect(function()
+            if isPremium and not Config.IsPremium then
+                Notify("Premium Only", name .. " butuh key Premium 'Joy'")
+                return
+            end
+            callback()
+        end)
+        return btn
+    end
+
+    -- === TAB SYSTEM ===
+    local tabs = {}
+    local currentTab
+
+    local function CreateTabContent(tabName)
+        local page = Instance.new("Frame")
+        page.Size = UDim2.new(1, 0, 0, 0)
+        page.AutomaticSize = Enum.AutomaticSize.Y
+        page.BackgroundTransparency = 1
+        page.Visible = false
+        page.Parent = content
+
+        local layout = Instance.new("UIListLayout")
+        layout.Padding = UDim.new(0, 6)
+        layout.SortOrder = Enum.SortOrder.LayoutOrder
+        layout.Parent = page
+
+        local pad = Instance.new("UIPadding")
+        pad.PaddingTop = UDim.new(0, 10)
+        pad.PaddingLeft = UDim.new(0, 10)
+        pad.PaddingRight = UDim.new(0, 10)
+        pad.PaddingBottom = UDim.new(0, 10)
+        pad.Parent = page
+
+        return page
+    end
+
+    local function AddTab(name, order)
+        local btn = CreateTabButton(name, order)
+        local page = CreateTabContent(name)
+        tabs[name] = { Btn = btn, Page = page }
+        btn.MouseButton1Click:Connect(function()
+            for _, t in pairs(tabs) do
+                t.Page.Visible = false
+                t.Btn.BackgroundColor3 = theme.bg2
+            end
+            page.Visible = true
+            btn.BackgroundColor3 = theme.bg3
+        end)
+        return page
+    end
+
+    -- === TABS ===
+    local tabESP = AddTab("ESP", 1)
+    local tabSteal = AddTab("Steal", 2)
+    local tabCollect = AddTab("Collect", 3)
+    local tabAuto = AddTab("Auto", 4)
+    local tabDefense = AddTab("Defense", 5)
+    local tabMove = AddTab("Movement", 6)
+    local tabEvent = AddTab("Event", 7)
+    local tabMisc = AddTab("Misc", 8)
+
+    -- ESP TAB
+    CreateSection(tabESP, "Egg ESP (Unlimited Range)")
+    CreateToggle(tabESP, "ESP Egg", "ESP_Egg", false, function(v) Config.ESP_Egg_Enabled = v end, false, function() return Config.ESP_Egg_Enabled end)
+    CreateToggle(tabESP, "Show Name", "EggName", true, function(v) Config.ESP_Egg_ShowName = v end, false, function() return Config.ESP_Egg_ShowName end)
+    CreateToggle(tabESP, "Show Tier", "EggTier", true, function(v) Config.ESP_Egg_ShowTier = v end, false, function() return Config.ESP_Egg_ShowTier end)
+    CreateToggle(tabESP, "Show Distance", "EggDist", true, function(v) Config.ESP_Egg_ShowDist = v end, false, function() return Config.ESP_Egg_ShowDist end)
+
+    CreateSection(tabESP, "Player ESP (Unlimited Range)")
+    CreateToggle(tabESP, "ESP Player", "ESP_Player", false, function(v) Config.ESP_Player_Enabled = v end, false, function() return Config.ESP_Player_Enabled end)
+    CreateToggle(tabESP, "Show Name", "PName", true, function(v) Config.ESP_Player_Name = v end, false, function() return Config.ESP_Player_Name end)
+    CreateToggle(tabESP, "Show HP", "PHP", true, function(v) Config.ESP_Player_HP = v end, false, function() return Config.ESP_Player_HP end)
+    CreateToggle(tabESP, "Show Distance", "PDist", true, function(v) Config.ESP_Player_Dist = v end, false, function() return Config.ESP_Player_Dist end)
+
+    CreateSection(tabESP, "Base & Antena")
+    CreateToggle(tabESP, "ESP Base", "ESP_Base", false, function(v) Config.ESP_Base_Enabled = v end, false, function() return Config.ESP_Base_Enabled end)
+    CreateToggle(tabESP, "Antena FF", "Antena", false, function(v) Config.ESP_Antena_Enabled = v end, false, function() return Config.ESP_Antena_Enabled end)
+    CreateSlider(tabESP, "Antena Height", 50, 600, 250, "px", "AntH", function(v) Config.ESP_Antena_Height = v end, false)
+    CreateSlider(tabESP, "Antena Thickness", 1, 6, 2, "px", "AntT", function(v) Config.ESP_Antena_Thickness = v end, false)
+
+    CreateSection(tabESP, "Biome & Event")
+    CreateToggle(tabESP, "ESP Biome", "ESP_Biome", false, function(v) Config.ESP_Biome_Enabled = v end, false, function() return Config.ESP_Biome_Enabled end)
+    CreateToggle(tabESP, "ESP Event", "ESP_Event", false, function(v) Config.ESP_Event_Enabled = v end, false, function() return Config.ESP_Event_Enabled end)
+
+    -- STEAL TAB
+    CreateSection(tabSteal, "Auto Steal Egg")
+    CreateToggle(tabSteal, "Auto Steal", "Steal", false, function(v) Config.Steal_Enabled = v end, false, function() return Config.Steal_Enabled end)
+    CreateDropdown(tabSteal, "Priority", {"Nearest", "Rarest", "LowestTier"}, "Nearest", "StealPrio", function(o) Config.Steal_Priority = o end, false)
+    CreateDropdown(tabSteal, "Filter", {"All", "Priority"}, "All", "StealFilter", function(o) Config.Steal_Filter = o end, false)
+    CreateDropdown(tabSteal, "Filter Tier", TierOrder, "Divine", "StealFilterName", function(o) Config.Steal_FilterName = o end, false)
+    CreateSlider(tabSteal, "Steal Delay", 1, 30, 5, "x0.1s", "StealDelay", function(v) Config.Steal_Delay = v / 10 end, false)
+    CreateToggle(tabSteal, "Auto Return Base", "Return", false, function(v) Config.ReturnBase_Enabled = v end, false, function() return Config.ReturnBase_Enabled end)
+
+    CreateSection(tabSteal, "Premium Steal")
+    CreateToggle(tabSteal, "Auto Steal Fly (Fast)", "StealFly", false, function(v) Config.StealFly_Enabled = v end, true, function() return Config.StealFly_Enabled end)
+    CreateSlider(tabSteal, "Fly Speed", 60, 300, 120, "sp", "StealFlySpeed", function(v) Config.StealFly_Speed = v end, true)
+    CreateToggle(tabSteal, "Silent Steal (Instan)", "SilentSteal", false, function(v) Config.SilentSteal_Enabled = v end, true, function() return Config.SilentSteal_Enabled end)
+    CreateToggle(tabSteal, "Priority Divine/Secret", "PriorityDivine", false, function(v) Config.PriorityDivine_Enabled = v end, true, function() return Config.PriorityDivine_Enabled end)
+
+    -- COLLECT TAB
+    CreateSection(tabCollect, "Collect & Deposit")
+    CreateToggle(tabCollect, "Auto Collect Egg", "CollectEgg", false, function(v) Config.CollectEgg_Enabled = v end, false, function() return Config.CollectEgg_Enabled end)
+    CreateSlider(tabCollect, "Collect Range", 20, 500, 100, "m", "CollectRange", function(v) Config.CollectEgg_Range = v end, false)
+    CreateToggle(tabCollect, "Auto Deposit", "Deposit", false, function(v) Config.Deposit_Enabled = v end, false, function() return Config.Deposit_Enabled end)
+
+    CreateSection(tabCollect, "Hatch & Farm")
+    CreateToggle(tabCollect, "Auto Hatch", "Hatch", false, function(v) Config.Hatch_Enabled = v end, false, function() return Config.Hatch_Enabled end)
+    CreateToggle(tabCollect, "Auto Fast Farm (Treadmill)", "Farm", false, function(v) Config.FarmTreadmill_Enabled = v end, false, function() return Config.FarmTreadmill_Enabled end)
+
+    -- AUTO TAB
+    CreateSection(tabAuto, "Auto Rebirth / Buy / Upgrade")
+    CreateToggle(tabAuto, "Auto Rebirth", "Rebirth", false, function(v) Config.Rebirth_Enabled = v end, false, function() return Config.Rebirth_Enabled end)
+    CreateToggle(tabAuto, "Auto Buy Egg", "BuyEgg", false, function(v) Config.BuyEgg_Enabled = v end, false, function() return Config.BuyEgg_Enabled end)
+    CreateToggle(tabAuto, "Auto Upgrade", "Upgrade", false, function(v) Config.Upgrade_Enabled = v end, false, function() return Config.Upgrade_Enabled end)
+    CreateToggle(tabAuto, "Auto Claim Daily / Gift", "Claim", false, function(v) Config.ClaimDaily_Enabled = v end, false, function() return Config.ClaimDaily_Enabled end)
+
+    -- DEFENSE TAB
+    CreateSection(tabDefense, "Defense")
+    CreateToggle(tabDefense, "God Mode", "God", false, function(v) Config.GodMode_Enabled = v end, false, function() return Config.GodMode_Enabled end)
+    CreateSlider(tabDefense, "Lock HP", 100, 10000, 1000, "", "GodHP", function(v) Config.GodMode_LockHP = v end, false)
+    CreateToggle(tabDefense, "Anti Guardian (Kill Monster)", "AntiGuard", false, function(v) Config.AntiGuardian_Enabled = v end, false, function() return Config.AntiGuardian_Enabled end)
+    CreateToggle(tabDefense, "Anti Steal (Lock Egg Base)", "AntiSteal", false, function(v) Config.AntiSteal_Enabled = v end, true, function() return Config.AntiSteal_Enabled end)
+    CreateToggle(tabDefense, "Kill Aura", "KillAura", false, function(v) Config.KillAura_Enabled = v end, true, function() return Config.KillAura_Enabled end)
+    CreateSlider(tabDefense, "Kill Aura Range", 10, 100, 30, "m", "KillRange", function(v) Config.KillAura_Range = v end, true)
+
+    -- MOVE TAB
+    CreateSection(tabMove, "Movement")
+    CreateToggle(tabMove, "Speed Boost", "Speed", false, function(v) Config.Speed_Enabled = v end, false, function() return Config.Speed_Enabled end)
+    CreateSlider(tabMove, "Speed Value", 16, 300, 60, "", "SpeedVal", function(v) Config.Speed_Value = v end, false)
+    CreateToggle(tabMove, "Infinite Jump", "InfJump", false, function(v) Config.InfJump_Enabled = v end, false, function() return Config.InfJump_Enabled end)
+    CreateToggle(tabMove, "Fly", "Fly", false, function(v) Config.Fly_Enabled = v end, true, function() return Config.Fly_Enabled end)
+    CreateSlider(tabMove, "Fly Speed", 10, 300, 50, "", "FlySpeed", function(v) Config.Fly_Speed = v end, true)
+    CreateToggle(tabMove, "No Clip", "NoClip", false, function(v) Config.NoClip_Enabled = v end, false, function() return Config.NoClip_Enabled end)
+
+    -- EVENT TAB
+    CreateSection(tabEvent, "Auto Event")
+    CreateToggle(tabEvent, "Auto Event (Semua)", "AutoEvent", false, function(v) Config.AutoEvent_Enabled = v end, false, function() return Config.AutoEvent_Enabled end)
+    CreateToggle(tabEvent, "Auto Rift Event", "AutoRift", false, function(v) Config.AutoRift_Enabled = v end, false, function() return Config.AutoRift_Enabled end)
+    CreateToggle(tabEvent, "Auto Merged Biome (Angel+Demon)", "AutoMerged", false, function(v) Config.AutoMerged_Enabled = v end, false, function() return Config.AutoMerged_Enabled end)
+
+    -- MISC TAB
+    CreateSection(tabMisc, "Teleport")
+    CreateButton(tabMisc, "Teleport to Nearest Egg", function() TeleportToEgg() end, false)
+    CreateButton(tabMisc, "Teleport to My Base", function() TeleportToBase() end, false)
+
+    CreateSection(tabMisc, "Visual")
+    CreateToggle(tabMisc, "Full Bright", "FB", false, function(v) Config.FullBright_Enabled = v; ApplyFullBright() end, false, function() return Config.FullBright_Enabled end)
+    CreateToggle(tabMisc, "Anti-AFK", "AFK", true, function(v) Config.AntiAFK_Enabled = v end, false, function() return Config.AntiAFK_Enabled end)
+    CreateButton(tabMisc, "Server Hop", function() ServerHop() end, false)
+
+    CreateSection(tabMisc, "Info")
+    local info = Instance.new("TextLabel")
+    info.Size = UDim2.new(1, -20, 0, 60)
+    info.BackgroundColor3 = theme.bg2
+    info.BorderSizePixel = 0
+    info.Text = "Script  : Steal An Egg\nOwner   : joy\nVersion : 2.0.0\nKey     : " .. (Config.IsPremium and "PREMIUM" or "BASIC")
+    info.TextColor3 = theme.text
+    info.Font = Enum.Font.Gotham
+    info.TextSize = 12
+    info.TextWrapped = true
+    info.TextXAlignment = Enum.TextXAlignment.Left
+    info.Parent = tabMisc
+    Instance.new("UICorner", info).CornerRadius = UDim.new(0, 6)
+    Instance.new("UIPadding", info).PaddingLeft = UDim.new(0, 8)
+
+    CreateButton(tabMisc, "Unload Script", function()
+        for _, c in ipairs(State.Conns) do pcall(function() c:Disconnect() end) end
+        State.Conns = {}
+        for _, e in pairs(State.ESP) do
+            for _, o in pairs(e) do pcall(function() o:Remove() end) end
+        end
+        State.ESP = {}
+        for _, tag in pairs(State.EggESP) do pcall(function() tag:Remove() end) end
+        State.EggESP = {}
+        for _, tag in pairs(State.BaseESP) do pcall(function() tag:Remove() end) end
+        State.BaseESP = {}
+        for _, tag in pairs(State.BiomeESP) do pcall(function() tag:Remove() end) end
+        State.BiomeESP = {}
+        for _, tag in pairs(State.EventESP) do pcall(function() tag:Remove() end) end
+        State.EventESP = {}
+        if State.Watermark then pcall(function() State.Watermark:Remove() end) end
+        if State.SpeedBV then State.SpeedBV:Destroy(); State.SpeedBV = nil end
+        StopFly()
+        Lighting.Ambient = State.OrigLight.Ambient
+        Lighting.OutdoorAmbient = State.OrigLight.OutdoorAmbient
+        Lighting.Brightness = State.OrigLight.Brightness
+        Lighting.FogEnd = State.OrigLight.FogEnd
+        Lighting.GlobalShadows = State.OrigLight.GlobalShadows
+        if State.UI.ScreenGui then State.UI.ScreenGui:Destroy() end
+    end, false)
+
+    -- Default buka tab ESP
+    tabESP.Visible = true
+    tabs["ESP"].Btn.BackgroundColor3 = theme.bg3
+
+    return sg
+end
+
+-- ============================================================
+-- INIT
+-- ============================================================
+SetupHooks()
+SetupInfJump()
+SetupAntiAFK()
+CreateWatermark()
+CreateUI()
+
+State.Conns[#State.Conns + 1] = RunService.RenderStepped:Connect(function()
+    if not Config.Enabled then return end
+    pcall(RunStealEgg)
+    pcall(RunCollectEgg)
+    pcall(RunDeposit)
+    pcall(RunHatch)
+    pcall(RunFarmTreadmill)
+    pcall(RunRebirth)
+    pcall(RunBuyEgg)
+    pcall(RunUpgrade)
+    pcall(RunClaimDaily)
+    pcall(RunAutoEvent)
+    pcall(RunAutoRift)
+    pcall(RunAutoMerged)
+    pcall(RunGodMode)
+    pcall(RunAntiGuardian)
+    pcall(RunAntiSteal)
+    pcall(RunKillAura)
+    pcall(UpdatePlayerESP)
+    pcall(UpdateEggESP)
+    pcall(UpdateBaseESP)
+    pcall(UpdateBiomeESP)
+    pcall(UpdateEventESP)
+    pcall(RunSpeed)
+    pcall(UpdateFly)
+    pcall(RunNoClip)
+    pcall(RunBypassTick)
+end)
+
+State.Conns[#State.Conns + 1] = UIS.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.T then
+        TeleportToEgg()
+    elseif input.KeyCode == Enum.KeyCode.B then
+        TeleportToBase()
+    end
+end)
+
+State.Conns[#State.Conns + 1] = Players.PlayerRemoving:Connect(function(plr)
+    RemovePlayerESP(plr)
+end)
+
+Notify("Steal An Egg v2.0", "Loaded. Ketik key 'Joy' untuk Premium.")
+print("[Steal An Egg v2.0] Loaded. Owner: joy")    S.config = deepCopy(DEFAULT)
     pcall(function()
         if _isfile and _isfile(CONFIG_FILE) then
             local data = Http:JSONDecode(_readfile(CONFIG_FILE))
